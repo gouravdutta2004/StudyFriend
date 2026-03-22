@@ -1,0 +1,144 @@
+import React, { useEffect, useState } from 'react';
+import api from '../api/axios';
+import { Trophy, Medal, Flame, Clock } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
+import { Container, Typography, Box, CircularProgress, Paper, List, ListItem, ListItemAvatar, Avatar, AvatarGroup, Chip, useTheme, Divider } from '@mui/material';
+
+export default function Leaderboard() {
+  const [leaders, setLeaders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const theme = useTheme();
+
+  useEffect(() => {
+    api.get('/users/leaderboard')
+      .then(res => setLeaders(res.data))
+      .catch((err) => toast.error('Failed to load leaderboard'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <Container maxWidth="md" sx={{ py: 6 }}>
+      <Box sx={{ textAlign: 'center', mb: 6 }}>
+        <Box sx={{ 
+          display: 'inline-flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          p: 3, 
+          bgcolor: theme.palette.mode === 'dark' ? 'rgba(234, 179, 8, 0.1)' : 'rgba(253, 224, 71, 0.3)', 
+          borderRadius: '50%', 
+          mb: 3,
+          boxShadow: theme.shadows[2]
+        }}>
+          <Trophy size={56} color="#ca8a04" />
+        </Box>
+        <Typography variant="h3" fontWeight={900} color="text.primary" gutterBottom>
+          Study Leaderboard
+        </Typography>
+        <Typography variant="subtitle1" color="text.secondary">
+          Ranked by total study hours. Keep grinding to climb the ranks!
+        </Typography>
+      </Box>
+
+      <Paper elevation={theme.palette.mode === 'dark' ? 4 : 2} sx={{ borderRadius: 4, overflow: 'hidden' }}>
+        <List disablePadding>
+          {leaders.map((leader, idx) => {
+            const isMe = user?._id === leader._id;
+            let rankBadge = null;
+            if (idx === 0) rankBadge = <Medal size={28} color="#eab308" />;
+            else if (idx === 1) rankBadge = <Medal size={28} color="#9ca3af" />;
+            else if (idx === 2) rankBadge = <Medal size={28} color="#d97706" />;
+            else rankBadge = <Typography variant="h6" fontWeight={800} color="text.secondary" sx={{ width: 28, textAlign: 'center' }}>{idx + 1}</Typography>;
+
+            return (
+              <React.Fragment key={leader._id}>
+                {idx > 0 && <Divider component="li" />}
+                <ListItem 
+                  sx={{ 
+                    p: 3, 
+                    transition: 'background-color 0.2s',
+                    bgcolor: isMe ? (theme.palette.mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(219, 234, 254, 0.5)') : 'transparent',
+                    '&:hover': {
+                      bgcolor: isMe ? undefined : 'action.hover'
+                    }
+                  }}
+                >
+                  <Box sx={{ mr: 3, display: 'flex', justifyContent: 'center', width: 40 }}>
+                    {rankBadge}
+                  </Box>
+
+                  <ListItemAvatar sx={{ mr: 2 }}>
+                    <Avatar 
+                      src={leader.avatar || undefined} 
+                      sx={{ 
+                        width: 56, 
+                        height: 56, 
+                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
+                        color: 'primary.main',
+                        fontSize: '1.5rem',
+                        fontWeight: 700
+                      }}
+                    >
+                      {!leader.avatar && leader.name.charAt(0)}
+                    </Avatar>
+                  </ListItemAvatar>
+                  
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
+                      <Typography variant="h6" fontWeight={800} color="text.primary" noWrap>
+                        {leader.name}
+                      </Typography>
+                      {isMe && (
+                        <Chip label="You" size="small" color="primary" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 800 }} />
+                      )}
+                    </Box>
+                    {leader.badges && leader.badges.length > 0 && (
+                      <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                        Latest Badge: {leader.badges[leader.badges.length - 1]}
+                      </Typography>
+                    )}
+                  </Box>
+
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 2, sm: 4 }, ml: 2 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <Typography variant="subtitle1" fontWeight={800} sx={{ color: theme.palette.mode === 'dark' ? '#fb923c' : '#f97316', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Flame size={18} /> {leader.streak || 0}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' }, fontWeight: 600 }}>
+                        Day Streak
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <Typography variant="subtitle1" fontWeight={800} color="primary.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Clock size={16} /> {leader.studyHours ? leader.studyHours.toFixed(1) : '0.0'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' }, fontWeight: 600 }}>
+                        Hours
+                      </Typography>
+                    </Box>
+                  </Box>
+                </ListItem>
+              </React.Fragment>
+            );
+          })}
+          {leaders.length === 0 && (
+            <ListItem sx={{ py: 8, justifyContent: 'center' }}>
+              <Typography variant="body1" color="text.secondary" fontStyle="italic">
+                No one has recorded any study hours yet!
+              </Typography>
+            </ListItem>
+          )}
+        </List>
+      </Paper>
+    </Container>
+  );
+}

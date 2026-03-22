@@ -1,0 +1,177 @@
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const Admin = require('../models/Admin');
+const Settings = require('../models/Settings');
+const crypto = require('crypto');
+const sendEmail = require('../utils/sendEmail');
+
+const generateToken = (id, role) => jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+const register = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password)
+      return res.status(400).json({ message: 'Please provide all fields' });
+    const exists = await User.findOne({ email });
+    if (exists) return res.status(400).json({ message: 'Email already registered' });
+    const user = await User.create({ name, email, password });
+    
+    try {
+      const settings = await Settings.findOne();
+      const template = settings?.emailTemplateWelcome || "<h1>Welcome {name}!</h1><p>We are glad to have you.</p>";
+      const welcomeHtml = template.replace(/{name}/g, user.name);
+      await sendEmail({
+        email: user.email,
+        subject: 'Welcome to StudyBuddyFinder!',
+        message: `Welcome ${user.name}!`,
+        html: welcomeHtml
+      });
+    } catch (err) { console.error('Welcome email failed', err); }
+    
+    res.status(201).json({ token: generateToken(user._id, 'user'), user });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    // Check Admin database first
+    let user = await Admin.findOne({ email });
+    let role = 'admin';
+    
+    if (!user) {
+      // Fallback to User database
+      user = await User.findOne({ email });
+      role = 'user';
+    }
+
+    if (!user || !(await user.matchPassword(password)))
+      return res.status(401).json({ message: 'Invalid email or password' });
+    if (!user.isActive)
+      return res.status(403).json({ message: 'Account blocked by administrator' });
+      
+    const userData = user.toJSON();
+    if (role === 'admin') userData.isAdmin = true; // Inject explicitly for frontend logic
+    
+    res.json({ token: generateToken(user._id, role), user: userData });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const getMe = async (req, res) => {
+  const userData = req.user.toJSON();
+  if (req.user.role === 'admin') userData.isAdmin = true;
+  res.json(userData);
+};
+
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    let user = await Admin.findOne({ email });
+    let role = 'admin';
+    if (!user) {
+      user = await User.findOne({ email });
+      role = 'user';
+    }
+    
+    if (!user) {
+      return res.status(404).json({ message: 'There is no user with that email' });
+    }
+
+    const resetToken = crypto.randomBytes(20).toString('hex');
+    
+    user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000;
+    
+    await user.save({ validateBeforeSave: false });
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
+
+    const settings = await Settings.findOne();
+    const template = settings?.emailTemplateReset || '<h1>Reset Password</h1><p>Click <a href="{link}">here</a> to reset.</p>';
+    const resetHtml = template.replace(/{link}/g, resetUrl).replace(/{name}/g, user.name);
+
+    const message = `You are receiving this email because you (or someone else) has requested the reset of a password. Please go to: \n\n ${resetUrl}`;
+
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: 'Password reset token',
+        message: message,
+        html: resetHtml
+      });
+
+      res.status(200).json({ success: true, message: 'Email sent' });
+    } catch (err) {
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpire = undefined;
+      await user.save({ validateBeforeSave: false });
+      return res.status(500).json({ message: 'Email could not be sent' });
+    }
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const resetPasswordToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+
+    let user = await Admin.findOne({
+      resetPasswordToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+    
+    if (!user) {
+      user = await User.findOne({
+        resetPasswordToken,
+        resetPasswordExpire: { $gt: Date.now() }
+      });
+    }
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired token' });
+    }
+
+    user.password = req.body.password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+
+    res.status(200).json({ success: true, message: 'Password updated successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Please provide current and new passwords' });
+    }
+    
+    let user = await Admin.findById(req.user._id);
+    if (!user) {
+      user = await User.findById(req.user._id);
+    }
+    
+    if (!user || !(await user.matchPassword(currentPassword))) {
+      return res.status(401).json({ message: 'Incorrect current password' });
+    }
+    
+    user.password = newPassword;
+    await user.save();
+    
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { register, login, getMe, forgotPassword, resetPassword, changePassword };
