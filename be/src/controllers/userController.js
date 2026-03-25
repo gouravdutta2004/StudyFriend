@@ -392,22 +392,44 @@ const getNearbyUsers = async (req, res) => {
     const { lat, lng, radius = 10000 } = req.query; // radius in metres, default 10km
     if (!lat || !lng) return res.status(400).json({ message: 'lat and lng are required' });
 
-    const users = await User.find({
-      _id: { $ne: req.user._id },
-      isActive: true,
-      isAdmin: { $ne: true },
-      geoLocation: {
-        $near: {
-          $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
-          $maxDistance: parseInt(radius)
+    const latF = parseFloat(lat);
+    const lngF = parseFloat(lng);
+    const radiusM = parseInt(radius);
+
+    let users = [];
+
+    try {
+      // Primary: $near — requires 2dsphere index (fast, sorted by distance)
+      users = await User.find({
+        _id: { $ne: req.user._id },
+        isActive: true,
+        isAdmin: { $ne: true },
+        geoLocation: {
+          $near: {
+            $geometry: { type: 'Point', coordinates: [lngF, latF] },
+            $maxDistance: radiusM
+          }
         }
-      }
-    }).select('name avatar subjects university level xp studyStyle geoLocation').limit(50);
+      }).select('name avatar subjects university level xp studyStyle geoLocation').limit(50);
+    } catch (geoErr) {
+      // Fallback: $geoWithin $centerSphere — works even without a 2dsphere index
+      console.warn('$near failed, falling back to $geoWithin:', geoErr.message);
+      const radiusRad = radiusM / 6378100; // convert metres to radians (Earth radius ~6378.1km)
+      users = await User.find({
+        _id: { $ne: req.user._id },
+        isActive: true,
+        isAdmin: { $ne: true },
+        'geoLocation.coordinates': {
+          $geoWithin: { $centerSphere: [[lngF, latF], radiusRad] }
+        }
+      }).select('name avatar subjects university level xp studyStyle geoLocation').limit(50);
+    }
 
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
+
 
 module.exports = { getProfile, updateProfile, searchUsers, getMatches, sendRequest, acceptRequest, rejectRequest, getConnections, disconnectUser, submitFeedback, getPublicSubjects, getSupportAdmin, logStudy, getLeaderboard, getQuickPeek, syncGithub, updateLocation, getNearbyUsers };
