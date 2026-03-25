@@ -14,6 +14,7 @@ const { protect, admin, isOrgAdmin } = require('../middleware/auth');
 const authorizeRole = require('../middleware/rbac');
 
 // ── ORG ADMIN HYBRID AUTH ROUTES ── //
+router.post('/auth/login', require('../controllers/adminAuthController').login);
 router.get('/pending-users', protect, isOrgAdmin, require('../controllers/adminController').getPendingUsers);
 router.put('/users/:id/approve', protect, isOrgAdmin, require('../controllers/adminController').approveUser);
 router.put('/users/:id/reject', protect, isOrgAdmin, require('../controllers/adminController').rejectUser);

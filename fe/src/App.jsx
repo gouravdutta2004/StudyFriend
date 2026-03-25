@@ -37,6 +37,7 @@ import GroupDetails from './pages/GroupDetails';
 import StudyMap from './pages/StudyMap';
 import PendingApproval from './pages/PendingApproval';
 import OrgAdminDashboard from './pages/OrgAdminDashboard';
+import OrgAdminLogin from './pages/OrgAdminLogin';
 
 import AIAssistantWidget from './components/AIAssistantWidget';
 import CustomCursor from './components/CustomCursor';
@@ -104,6 +105,7 @@ export default function App() {
             <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/org-admin-login" element={<OrgAdminLogin />} />
               <Route path="/register" element={<Register />} />
               <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
               <Route path="/forgot-password" element={<ForgotPassword />} />

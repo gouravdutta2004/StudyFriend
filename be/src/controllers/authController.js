@@ -13,28 +13,44 @@ const Organization = require('../models/Organization');
 
 const register = async (req, res) => {
   try {
-    const { name, email, password, organizationId } = req.body;
-    if (!name || !email || !password || !organizationId)
-      return res.status(400).json({ message: 'Please provide name, email, password, and organization selection' });
+    const { name, email, password, isGlobalUser, collegeData } = req.body;
+    if (!name || !email || !password)
+      return res.status(400).json({ message: 'Please provide name, email, and password' });
       
     const exists = await User.findOne({ email });
     if (exists) return res.status(400).json({ message: 'Email already registered' });
     
-    const org = await Organization.findById(organizationId);
-    if (!org) return res.status(404).json({ message: 'Organization not found' });
-
     let role = 'USER';
-    let verificationStatus = 'PENDING';
-    
-    // Check Admin Claim
-    if (org.authorizedAdmins && org.authorizedAdmins.map(e => e.toLowerCase()).includes(email.toLowerCase())) {
-      role = 'ORG_ADMIN';
-      verificationStatus = 'APPROVED';
-    } else {
-      // Domain Check (Auto-Approval)
-      const domainParts = email.split('@');
-      if (domainParts.length === 2 && domainParts[1].toLowerCase() === org.domain.toLowerCase()) {
+    let verificationStatus = 'APPROVED'; // Global users bypass walled-gardens explicitly.
+    let orgId = undefined;
+
+    if (!isGlobalUser) {
+      if (!collegeData || !collegeData.name || !collegeData.domain) {
+        return res.status(400).json({ message: 'Please provide valid college data or opt in as a global user.' });
+      }
+
+      let org = await Organization.findOne({ domain: collegeData.domain });
+      if (!org) {
+        org = await Organization.create({
+          name: collegeData.name,
+          domain: collegeData.domain,
+          authorizedAdmins: []
+        });
+      }
+
+      orgId = org._id;
+      verificationStatus = 'PENDING';
+      
+      // Check Admin Claim
+      if (org.authorizedAdmins && org.authorizedAdmins.map(e => e.toLowerCase()).includes(email.toLowerCase())) {
+        role = 'ORG_ADMIN';
         verificationStatus = 'APPROVED';
+      } else {
+        // Domain Check (Auto-Approval)
+        const domainParts = email.split('@');
+        if (domainParts.length === 2 && domainParts[1].toLowerCase() === org.domain.toLowerCase()) {
+          verificationStatus = 'APPROVED';
+        }
       }
     }
 
@@ -42,7 +58,7 @@ const register = async (req, res) => {
       name, 
       email, 
       password,
-      organization: org._id,
+      organization: orgId,
       role,
       verificationStatus
     });
@@ -236,24 +252,38 @@ const googleAuth = async (req, res) => {
     }
 
     if (!user) {
-      if (!req.body.organizationId) {
-        return res.status(404).json({ message: 'Account not found. Please register to select an institution first.' });
-      }
+      const { isGlobalUser, collegeData } = req.body;
 
-      const org = await Organization.findById(req.body.organizationId);
-      if (!org) return res.status(404).json({ message: 'Selected Organization not found.' });
+      let role = 'USER';
+      let verificationStatus = 'APPROVED';
+      let orgId = undefined;
 
-      let verificationStatus = 'PENDING';
-      role = 'USER';
-      
-      // Admin Claim check
-      if (org.authorizedAdmins && org.authorizedAdmins.map(e => e.toLowerCase()).includes(email.toLowerCase())) {
-        role = 'ORG_ADMIN';
-        verificationStatus = 'APPROVED';
-      } else {
-        const domainParts = email.split('@');
-        if (domainParts.length === 2 && domainParts[1].toLowerCase() === org.domain.toLowerCase()) {
+      if (!isGlobalUser) {
+        if (!collegeData || !collegeData.name || !collegeData.domain) {
+          return res.status(404).json({ message: 'Account not found. Please register to select an institution first.' });
+        }
+
+        let org = await Organization.findOne({ domain: collegeData.domain });
+        if (!org) {
+          org = await Organization.create({
+            name: collegeData.name,
+            domain: collegeData.domain,
+            authorizedAdmins: []
+          });
+        }
+        
+        orgId = org._id;
+        verificationStatus = 'PENDING';
+        
+        // Admin Claim check
+        if (org.authorizedAdmins && org.authorizedAdmins.map(e => e.toLowerCase()).includes(email.toLowerCase())) {
+          role = 'ORG_ADMIN';
           verificationStatus = 'APPROVED';
+        } else {
+          const domainParts = email.split('@');
+          if (domainParts.length === 2 && domainParts[1].toLowerCase() === org.domain.toLowerCase()) {
+            verificationStatus = 'APPROVED';
+          }
         }
       }
 
@@ -263,7 +293,7 @@ const googleAuth = async (req, res) => {
         email,
         password: randomPassword,
         avatar: picture,
-        organization: org._id,
+        organization: orgId,
         role,
         verificationStatus
       });

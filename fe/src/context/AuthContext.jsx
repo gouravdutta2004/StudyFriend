@@ -55,16 +55,16 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  const register = async (name, email, password, organizationId) => {
-    const { data } = await api.post('/auth/register', { name, email, password, organizationId });
+  const register = async (payload) => {
+    const { data } = await api.post('/auth/register', payload);
     localStorage.setItem('token', data.token);
     setUser(data.user);
     tryAutoSubscribePush();
     return data;
   };
 
-  const googleLogin = async (credential, organizationId) => {
-    const { data } = await api.post('/auth/google', { credential, organizationId });
+  const googleLogin = async (payload) => {
+    const { data } = await api.post('/auth/google', payload);
     localStorage.setItem('token', data.token);
     setUser(data.user);
     tryAutoSubscribePush();

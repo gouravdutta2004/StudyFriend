@@ -53,7 +53,7 @@ export default function Login() {
   const handleGoogleSuccess = async (credentialResponse) => {
     setLoading(true);
     try {
-      await googleLogin(credentialResponse.credential);
+      await googleLogin({ credential: credentialResponse.credential });
       toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (err) {
