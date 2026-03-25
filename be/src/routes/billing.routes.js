@@ -5,113 +5,173 @@ const { protect } = require('../middleware/auth');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 
-const isMock = !process.env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID === 'dummy_key';
+// Determine if we are running with real Razorpay keys
+const REAL_KEY = (process.env.RAZORPAY_KEY_ID || '').startsWith('rzp_test_') &&
+                 !process.env.RAZORPAY_KEY_ID.includes('REPLACE');
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || 'dummy_key',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || 'dummy_secret',
+const razorpay = REAL_KEY
+  ? new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    })
+  : null;
+
+const PLAN_AMOUNTS = { pro: 79900, squad: 159900 }; // paise
+const PLAN_LABELS  = { basic: 'Basic', pro: 'Pro', squad: 'Squad' };
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/billing/status
+// Returns the current user's subscription plan + expiry
+// ─────────────────────────────────────────────────────────────
+router.get('/status', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('subscription name email');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({
+      plan: user.subscription?.plan || 'basic',
+      activeUntil: user.subscription?.activeUntil || null,
+      isRealGateway: REAL_KEY,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
-// @route   POST /api/billing/create-order
-// @desc    Create a Razorpay order
-// @access  Private
-router.post('/create-order', protect, async (req, res) => {
+// ─────────────────────────────────────────────────────────────
+// GET /api/billing/history
+// Returns mock payment history (real implementation needs a Payment model)
+// ─────────────────────────────────────────────────────────────
+router.get('/history', protect, async (req, res) => {
   try {
-    const { plan } = req.body;
-    
-    // Validate requested plan
-    if (!['basic', 'pro', 'squad'].includes(plan)) {
-      return res.status(400).json({ message: 'Invalid subscription tier' });
-    }
+    const user = await User.findById(req.user.id).select('subscription createdAt');
+    const history = [];
 
-    let amount = 0;
-    if (plan === 'pro') amount = 79900; // 799 INR in paise
-    if (plan === 'squad') amount = 159900; // 1599 INR in paise
-    
-    if (amount === 0) {
-       return res.status(400).json({ message: 'Cannot create an order for a free plan' });
-    }
-
-    if (isMock) {
-      return res.json({
-        orderId: `order_mock_${Date.now()}`,
-        amount,
-        currency: "INR",
-        key_id: 'rzp_test_mock'
+    if (user?.subscription?.plan && user.subscription.plan !== 'basic') {
+      const amount = PLAN_AMOUNTS[user.subscription.plan] || 0;
+      history.push({
+        id: `pay_hist_${user._id}`,
+        date: user.subscription.activeUntil
+          ? new Date(new Date(user.subscription.activeUntil) - 365 * 24 * 60 * 60 * 1000)
+          : user.createdAt,
+        plan: user.subscription.plan,
+        amount: amount / 100,
+        currency: 'INR',
+        status: 'paid',
       });
     }
 
-    const receiptString = `receipt_${req.user.id}_${Date.now()}`.substring(0, 40);
+    res.json(history);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
-    const options = {
-      amount, 
-      currency: "INR",
-      receipt: receiptString,
-    };
+// ─────────────────────────────────────────────────────────────
+// POST /api/billing/create-order
+// Creates a Razorpay order (or mock in dev mode)
+// ─────────────────────────────────────────────────────────────
+router.post('/create-order', protect, async (req, res) => {
+  try {
+    const { plan } = req.body;
 
-    const order = await razorpay.orders.create(options);
-    
+    if (!['pro', 'squad'].includes(plan)) {
+      return res.status(400).json({ message: 'Invalid or free plan — no order needed.' });
+    }
+
+    const amount = PLAN_AMOUNTS[plan];
+
+    if (!REAL_KEY) {
+      // Dev / demo mode — return a mock order
+      return res.json({
+        orderId: `order_mock_${Date.now()}`,
+        amount,
+        currency: 'INR',
+        key_id: 'rzp_test_mock',
+        isMock: true,
+      });
+    }
+
+    // Real Razorpay order
+    const receipt = `rcpt_${req.user.id.toString().slice(-8)}_${Date.now()}`.substring(0, 40);
+    const order = await razorpay.orders.create({ amount, currency: 'INR', receipt });
+
     res.json({
       orderId: order.id,
       amount: order.amount,
       currency: order.currency,
-      key_id: process.env.RAZORPAY_KEY_ID
+      key_id: process.env.RAZORPAY_KEY_ID,
+      isMock: false,
     });
-  } catch (error) {
-    console.error('Create order error:', error);
-    res.status(500).json({ message: 'Server error creating order' });
+  } catch (err) {
+    console.error('Create order error:', err);
+    res.status(500).json({ message: 'Could not create payment order. Please try again.' });
   }
 });
 
-// @route   POST /api/billing/verify
-// @desc    Verify Razorpay payment and upgrade user
-// @access  Private
+// ─────────────────────────────────────────────────────────────
+// POST /api/billing/verify
+// Verifies Razorpay signature and upgrades the user's plan
+// ─────────────────────────────────────────────────────────────
 router.post('/verify', protect, async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, plan } = req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, plan, isMock } = req.body;
+
+    if (!['pro', 'squad'].includes(plan)) {
+      return res.status(400).json({ message: 'Invalid plan for verification.' });
+    }
 
     if (isMock) {
+      // Mock mode — skip signature check
       if (razorpay_signature !== 'mock_signature') {
         return res.status(400).json({ message: 'Invalid mock signature.' });
       }
     } else {
-      const secret = process.env.RAZORPAY_KEY_SECRET;
-      const body = razorpay_order_id + "|" + razorpay_payment_id;
-      
-      const expectedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(body.toString())
+      // Real signature verification
+      const body   = `${razorpay_order_id}|${razorpay_payment_id}`;
+      const expected = crypto
+        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+        .update(body)
         .digest('hex');
 
-      const isAuthentic = expectedSignature === razorpay_signature;
-
-      if (!isAuthentic) {
-        return res.status(400).json({ message: 'Invalid signature. Payment verification failed.' });
+      if (expected !== razorpay_signature) {
+        return res.status(400).json({ message: 'Payment verification failed — signature mismatch.' });
       }
     }
 
     const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const expiration = new Date();
-    expiration.setFullYear(expiration.getFullYear() + 1);
+    const activeUntil = new Date();
+    activeUntil.setFullYear(activeUntil.getFullYear() + 1);
 
-    user.subscription = {
-      plan,
-      activeUntil: expiration
-    };
-
+    user.subscription = { plan, activeUntil };
     await user.save();
 
     res.json({
-      message: `Successfully upgraded to ${plan.toUpperCase()} tier!`,
-      subscription: user.subscription
+      message: `🎉 Successfully upgraded to ${PLAN_LABELS[plan]}!`,
+      subscription: user.subscription,
     });
-  } catch (error) {
-    console.error('Verification error:', error);
-    res.status(500).json({ message: 'Server error verifying payment' });
+  } catch (err) {
+    console.error('Verify error:', err);
+    res.status(500).json({ message: 'Payment verification error. Please contact support.' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/billing/cancel
+// Downgrades user back to Basic plan
+// ─────────────────────────────────────────────────────────────
+router.post('/cancel', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.subscription = { plan: 'basic', activeUntil: null };
+    await user.save();
+
+    res.json({ message: 'Subscription cancelled. You are now on the Basic plan.', subscription: user.subscription });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
