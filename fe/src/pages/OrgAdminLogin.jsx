@@ -5,7 +5,7 @@ import { Email, Lock, Visibility, VisibilityOff, Security } from '@mui/icons-mat
 import { motion } from 'framer-motion';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
-import { useAuth } from './context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function OrgAdminLogin() {
   const [email, setEmail] = useState('');
