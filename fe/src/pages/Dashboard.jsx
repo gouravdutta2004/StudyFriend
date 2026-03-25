@@ -9,6 +9,7 @@ import GamificationDashboard from '../components/GamificationDashboard';
 import UserQuickPeek from '../components/UserQuickPeek';
 import GlobalActivityFeed from '../components/dashboard/GlobalActivityFeed';
 import BountiesWidget from '../components/dashboard/BountiesWidget';
+import LiveCampusDock from '../components/dashboard/LiveCampusDock';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { Box, Container, Typography, Grid, Button, Avatar, Chip, IconButton, useTheme } from '@mui/material';
 
@@ -353,6 +354,13 @@ export default function Dashboard() {
               <Box component={motion.div} variants={fadeUpSpring}>
                 <Box sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'white', backdropFilter: 'blur(20px)', border: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)', borderRadius: '24px', overflow: 'hidden', boxShadow: isDark ? 'none' : '0 10px 30px rgba(0, 0, 0, 0.05)' }}>
                   <GlobalActivityFeed />
+                </Box>
+              </Box>
+
+              {/* Live Campus Dock */}
+              <Box component={motion.div} variants={fadeUpSpring}>
+                <Box sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'white', backdropFilter: 'blur(20px)', border: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)', borderRadius: '24px', overflow: 'hidden', boxShadow: isDark ? 'none' : '0 10px 30px rgba(0, 0, 0, 0.05)' }}>
+                  <LiveCampusDock />
                 </Box>
               </Box>
 
