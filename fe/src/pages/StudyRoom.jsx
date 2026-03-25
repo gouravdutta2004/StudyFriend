@@ -57,7 +57,8 @@ export default function StudyRoom() {
         }
 
       } catch (err) {
-        toast.error('Failed to load study room or verify permissions');
+        console.error("StudyRoom Load Error:", err);
+        toast.error(err.response?.data?.message || err.message || 'Failed to load study room or verify permissions');
         navigate('/sessions');
       } finally {
         setLoading(false);

@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api/axios';
-import { Trophy, Medal, Flame, Clock } from 'lucide-react';
+import { Trophy, Medal, Flame, Star, Target } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import { Container, Typography, Box, CircularProgress, Paper, List, ListItem, ListItemAvatar, Avatar, AvatarGroup, Chip, useTheme, Divider } from '@mui/material';
+import { Container, Typography, Box, CircularProgress, Paper, List, ListItem, ListItemAvatar, Avatar, Chip, useTheme, Divider, Tooltip } from '@mui/material';
 
 export default function Leaderboard() {
   const [leaders, setLeaders] = useState([]);
@@ -34,27 +34,27 @@ export default function Leaderboard() {
           alignItems: 'center', 
           justifyContent: 'center', 
           p: 3, 
-          bgcolor: theme.palette.mode === 'dark' ? 'rgba(234, 179, 8, 0.1)' : 'rgba(253, 224, 71, 0.3)', 
+          bgcolor: theme.palette.mode === 'dark' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.1)', 
           borderRadius: '50%', 
           mb: 3,
           boxShadow: theme.shadows[2]
         }}>
-          <Trophy size={56} color="#ca8a04" />
+          <Trophy size={56} color="#8b5cf6" />
         </Box>
         <Typography variant="h3" fontWeight={900} color="text.primary" gutterBottom>
-          Study Leaderboard
+          Global Matrix Rankings
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
-          Ranked by total study hours. Keep grinding to climb the ranks!
+          Ranked by total XP. Complete Quests and focus sessions to climb the ranks!
         </Typography>
       </Box>
 
-      <Paper elevation={theme.palette.mode === 'dark' ? 4 : 2} sx={{ borderRadius: 4, overflow: 'hidden' }}>
+      <Paper elevation={theme.palette.mode === 'dark' ? 4 : 2} sx={{ borderRadius: 4, overflow: 'hidden', border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}` }}>
         <List disablePadding>
           {leaders.map((leader, idx) => {
             const isMe = user?._id === leader._id;
             let rankBadge = null;
-            if (idx === 0) rankBadge = <Medal size={28} color="#eab308" />;
+            if (idx === 0) rankBadge = <Medal size={32} color="#eab308" />;
             else if (idx === 1) rankBadge = <Medal size={28} color="#9ca3af" />;
             else if (idx === 2) rankBadge = <Medal size={28} color="#d97706" />;
             else rankBadge = <Typography variant="h6" fontWeight={800} color="text.secondary" sx={{ width: 28, textAlign: 'center' }}>{idx + 1}</Typography>;
@@ -66,13 +66,13 @@ export default function Leaderboard() {
                   sx={{ 
                     p: 3, 
                     transition: 'background-color 0.2s',
-                    bgcolor: isMe ? (theme.palette.mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(219, 234, 254, 0.5)') : 'transparent',
+                    bgcolor: isMe ? (theme.palette.mode === 'dark' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.05)') : 'transparent',
                     '&:hover': {
                       bgcolor: isMe ? undefined : 'action.hover'
                     }
                   }}
                 >
-                  <Box sx={{ mr: 3, display: 'flex', justifyContent: 'center', width: 40 }}>
+                  <Box sx={{ mr: 3, display: 'flex', justifyContent: 'center', width: 40, flexShrink: 0 }}>
                     {rankBadge}
                   </Box>
 
@@ -82,8 +82,9 @@ export default function Leaderboard() {
                       sx={{ 
                         width: 56, 
                         height: 56, 
-                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
-                        color: 'primary.main',
+                        border: idx === 0 ? '3px solid #eab308' : 'none',
+                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.1)',
+                        color: '#8b5cf6',
                         fontSize: '1.5rem',
                         fontWeight: 700
                       }}
@@ -92,23 +93,30 @@ export default function Leaderboard() {
                     </Avatar>
                   </ListItemAvatar>
                   
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', pr: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
                       <Typography variant="h6" fontWeight={800} color="text.primary" noWrap>
                         {leader.name}
                       </Typography>
                       {isMe && (
-                        <Chip label="You" size="small" color="primary" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 800 }} />
+                        <Chip label="You" size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 800, bgcolor: '#8b5cf6', color: 'white' }} />
                       )}
                     </Box>
-                    {leader.badges && leader.badges.length > 0 && (
-                      <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
-                        Latest Badge: {leader.badges[leader.badges.length - 1]}
-                      </Typography>
-                    )}
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 0.5 }}>
+                      <Chip 
+                        size="small" 
+                        label={`LVL ${leader.level || 1}`} 
+                        sx={{ height: 20, fontSize: '0.7rem', fontWeight: 800, bgcolor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8' }} 
+                      />
+                      {leader.badges && leader.badges.slice(-2).map((b, i) => (
+                         <Tooltip key={i} title={b}>
+                           <Chip size="small" icon={<Star size={10} />} label={b.split(' ')[0]} sx={{ height: 20, fontSize: '0.65rem' }} />
+                         </Tooltip>
+                      ))}
+                    </Box>
                   </Box>
 
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 2, sm: 4 }, ml: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 2, sm: 4 }, ml: 'auto', flexShrink: 0 }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                       <Typography variant="subtitle1" fontWeight={800} sx={{ color: theme.palette.mode === 'dark' ? '#fb923c' : '#f97316', display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         <Flame size={18} /> {leader.streak || 0}
@@ -118,11 +126,11 @@ export default function Leaderboard() {
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <Typography variant="subtitle1" fontWeight={800} color="primary.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Clock size={16} /> {leader.studyHours ? leader.studyHours.toFixed(1) : '0.0'}
+                      <Typography variant="subtitle1" fontWeight={900} color="#8b5cf6" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Target size={16} /> {(leader.xp || 0).toLocaleString()}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' }, fontWeight: 600 }}>
-                        Hours
+                        Total XP
                       </Typography>
                     </Box>
                   </Box>
@@ -133,7 +141,7 @@ export default function Leaderboard() {
           {leaders.length === 0 && (
             <ListItem sx={{ py: 8, justifyContent: 'center' }}>
               <Typography variant="body1" color="text.secondary" fontStyle="italic">
-                No one has recorded any study hours yet!
+                No active players in the matrix yet.
               </Typography>
             </ListItem>
           )}

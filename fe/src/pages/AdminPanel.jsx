@@ -15,7 +15,7 @@ import {
   Box, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton, ListItem, ListItemButton, ListItemIcon, ListItemText, 
   Container, Grid, CardContent, TextField, Button, Avatar, Chip, Dialog, DialogTitle, DialogContent, DialogActions, 
   Switch, FormControlLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Checkbox, Tooltip, 
-  Select, MenuItem, InputAdornment, Tabs, Tab
+  Select, MenuItem, InputAdornment, Tabs, Tab, Autocomplete
 } from '@mui/material';
 
 const drawerWidth = 260;
@@ -77,11 +77,12 @@ export default function AdminPanel() {
   const [connections, setConnections] = useState([]);
   const [feedback, setFeedback] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [organizations, setOrganizations] = useState([]);
   const [siteConfig, setSiteConfig] = useState({ welcomeTitle: 'Welcome back, {name}! 👋', welcomeSubtitle: 'Find your perfect study buddy and achieve your goals together.', showQuickActions: true, showSuggestedMatches: true, showStatCards: true, showProfileIncompleteBanner: true, announcementBannerActive: false, announcementBannerText: '', emailTemplateWelcome: '', emailTemplateReset: '', emailTemplateBroadcast: '' });
   const [loading, setLoading] = useState(true);
   
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', password: '', isAdmin: false, isActive: true });
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'USER', organization: null, isActive: true });
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
   const [broadcastForm, setBroadcastForm] = useState({ subject: '', message: '', targetUsers: 'all' });
   const [newSubject, setNewSubject] = useState('');
@@ -104,12 +105,13 @@ export default function AdminPanel() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [userRes, connRes, subRes, confRes, dashRes, growthRes, sessRes, healthRes, reportsRes, auditRes, flaggedRes, lbRes] = await Promise.all([
+      const [userRes, connRes, subRes, confRes, dashRes, growthRes, sessRes, healthRes, reportsRes, auditRes, flaggedRes, lbRes, orgsRes] = await Promise.all([
         api.get('/admin/users'), api.get('/admin/connections'), api.get('/admin/subjects'), api.get('/settings').catch(() => ({ data: {} })),
         api.get('/admin/analytics/dashboard').catch(() => ({ data: {} })), api.get('/admin/analytics/growth').catch(() => ({ data: [] })),
         api.get('/admin/analytics/sessions').catch(() => ({ data: [] })), api.get('/admin/health').catch(() => ({ data: {} })),
         api.get('/admin/reports').catch(() => ({ data: [] })), api.get('/admin/audit-logs').catch(() => ({ data: [] })),
-        api.get('/admin/content-scan').catch(() => ({ data: [] })), api.get('/admin/gamification/leaderboard').catch(() => ({ data: [] }))
+        api.get('/admin/content-scan').catch(() => ({ data: [] })), api.get('/admin/gamification/leaderboard').catch(() => ({ data: [] })),
+        api.get('/auth/organizations').catch(() => ({ data: [] }))
       ]);
       setUsers(userRes.data); setConnections(connRes.data); setSubjects(subRes.data);
       if (confRes.data && Object.keys(confRes.data).length > 0) setSiteConfig(confRes.data);
@@ -118,6 +120,7 @@ export default function AdminPanel() {
       if (healthRes.data && Object.keys(healthRes.data).length > 0) setSystemHealth(healthRes.data);
       setReports(reportsRes.data); setAuditLogs(auditRes.data); setFlaggedContent(flaggedRes.data);
       setLeaderboard(lbRes.data);
+      setOrganizations(orgsRes.data || []);
     } catch { toast.error('Failed to load dashboard metrics'); }
     finally { setLoading(false); }
   };
@@ -147,7 +150,11 @@ export default function AdminPanel() {
 
   const handleCreateUser = async (e) => {
     e.preventDefault(); setSaving(true);
-    try { await api.post('/admin/users', form); toast.success('User created'); setShowModal(false); setForm({ name: '', email: '', password: '', isAdmin: false, isActive: true }); fetchData(); }
+    if (form.role === 'ORG_ADMIN' && !form.organization) {
+      toast.error('Organization MUST be specified for Institution Admins');
+      setSaving(false); return;
+    }
+    try { await api.post('/admin/users', form); toast.success('Entity Successfully Spawnded'); setShowModal(false); setForm({ name: '', email: '', password: '', role: 'USER', organization: null, isActive: true }); fetchData(); }
     catch (err) { toast.error(err.response?.data?.message || 'Failed to create user'); }
     finally { setSaving(false); }
   };
@@ -362,7 +369,7 @@ export default function AdminPanel() {
             {/* Analytics Dashboard Matrix Layout */}
             {activeTab === 'dashboard' && (
               <Grid container spacing={3}>
-                <Grid size={{ xs: 12, lg: 8 }}>
+                <Grid item xs={12} lg={8}>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     
                     <Box component={motion.div} variants={fadeUpSpring}>
@@ -377,7 +384,7 @@ export default function AdminPanel() {
                             { label: 'RAM Allocation', value: `${systemHealth.memoryUsage}%`, color: '#8b5cf6', icon: Database },
                             { label: 'API Env', value: systemHealth.status, color: '#10b981', icon: Check }
                           ].map((env, i) => (
-                            <Grid size={{ xs: 12, sm: 6, md: 3 }} key={i}>
+                            <Grid item xs={12} sm={6} md={3} key={i}>
                               <Box sx={{ p: 2.5, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
                                 <Typography variant="caption" fontWeight={800} color="rgba(255,255,255,0.5)" display="flex" alignItems="center" gap={1} mb={1} textTransform="uppercase" letterSpacing={1}>
                                   <env.icon size={14}/> {env.label}
@@ -391,7 +398,7 @@ export default function AdminPanel() {
                     </Box>
 
                     <Grid container spacing={3}>
-                      <Grid size={{ xs: 12, md: 6 }} component={motion.div} variants={fadeUpSpring}>
+                      <Grid item xs={12} md={6} component={motion.div} variants={fadeUpSpring}>
                         <TiltCard sx={{ p: 4, height: 400 }}>
                           <Typography variant="h6" fontWeight={800} mb={3} display="flex" alignItems="center" gap={1.5}>
                             <Box sx={{ p: 1, borderRadius: '12px', bgcolor: 'rgba(99, 102, 241, 0.1)' }}><BookOpen size={20} color="#818cf8" /></Box>
@@ -407,7 +414,7 @@ export default function AdminPanel() {
                           </ResponsiveContainer>
                         </TiltCard>
                       </Grid>
-                      <Grid size={{ xs: 12, md: 6 }} component={motion.div} variants={fadeUpSpring}>
+                      <Grid item xs={12} md={6} component={motion.div} variants={fadeUpSpring}>
                         <TiltCard sx={{ p: 4, height: 400 }}>
                           <Typography variant="h6" fontWeight={800} mb={3} display="flex" alignItems="center" gap={1.5}>
                             <Box sx={{ p: 1, borderRadius: '12px', bgcolor: 'rgba(16, 185, 129, 0.1)' }}><Activity size={20} color="#34d399" /></Box>
@@ -434,7 +441,7 @@ export default function AdminPanel() {
                   </Box>
                 </Grid>
 
-                <Grid size={{ xs: 12, lg: 4 }}>
+                <Grid item xs={12} lg={4}>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {statCards.map((stat, i) => (
                       <Box component={motion.div} variants={fadeUpSpring} key={i}>
@@ -644,7 +651,7 @@ export default function AdminPanel() {
             {activeTab === 'communication' && role === 'Super Admin' && (
               <Box component={motion.div} variants={fadeUpSpring}>
                 <Grid container spacing={3}>
-                  <Grid size={{ xs: 12, md: 6 }}>
+                  <Grid item xs={12} md={6}>
                     <TiltCard sx={{ p: 4 }}>
                       <Typography variant="h5" fontWeight={900} mb={3} display="flex" alignItems="center" gap={1.5} color="white"><Mail color="#ec4899" size={28} /> Mass Broadcast Command</Typography>
                       <Box component="form" onSubmit={handleBroadcast} sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -659,7 +666,7 @@ export default function AdminPanel() {
                       </Box>
                     </TiltCard>
                   </Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>
+                  <Grid item xs={12} md={6}>
                     <TiltCard sx={{ p: 4 }}>
                       <Typography variant="h5" fontWeight={900} mb={3} display="flex" alignItems="center" gap={1.5} color="white"><Sliders color="#8b5cf6" size={28} /> Global App Config</Typography>
                       <Box component="form" align="left" onSubmit={updateSiteConfig} sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -775,6 +782,39 @@ export default function AdminPanel() {
           <Button onClick={() => setShowBroadcastModal(false)} sx={{ color: 'rgba(255,255,255,0.5)', fontWeight: 800 }}>Abort</Button>
           <Button onClick={handleBroadcast} variant="contained" disabled={saving} sx={{ bgcolor: '#ec4899', fontWeight: 800 }}>{saving ? 'Transmitting...' : 'Dispatch'}</Button>
         </DialogActions>
+      </Dialog>
+      
+      {/* Create User Dialog */}
+      <Dialog open={showModal} onClose={() => setShowModal(false)} PaperProps={{ sx: { bgcolor: '#0f172a', color: 'white', borderRadius: '24px', minWidth: 450, border: '1px solid rgba(255,255,255,0.1)' } }}>
+        <form onSubmit={handleCreateUser}>
+          <DialogTitle sx={{ fontWeight: 900, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>Spawn New Entity</DialogTitle>
+          <DialogContent sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
+             <TextField label="Full Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} fullWidth required sx={{ '& .MuiInputBase-input': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' } }} />
+             <TextField label="Email Address" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} fullWidth required sx={{ '& .MuiInputBase-input': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' } }} />
+             <TextField label="Secure Password" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} fullWidth required sx={{ '& .MuiInputBase-input': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' } }} />
+             
+             <TextField select label="Entity Matrix Role" value={form.role} onChange={e => setForm({...form, role: e.target.value, organization: null})} fullWidth sx={{ '& .MuiInputBase-input': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' } }} SelectProps={{ native: true }}>
+               <option value="USER" style={{color: 'black'}}>Standard Global Student</option>
+               <option value="ORG_ADMIN" style={{color: 'black'}}>Institution Administrator</option>
+               <option value="SUPER_ADMIN" style={{color: 'black'}}>System Super Admin</option>
+             </TextField>
+             
+             {form.role === 'ORG_ADMIN' && (
+                <Autocomplete
+                  options={organizations}
+                  getOptionLabel={(option) => option.name || ""}
+                  onChange={(event, newValue) => {
+                    setForm({ ...form, organization: newValue ? newValue._id : null });
+                  }}
+                  renderInput={(params) => <TextField {...params} label="Bind to Institution" required fullWidth sx={{ '& .MuiInputBase-input': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' } }} />}
+                />
+             )}
+          </DialogContent>
+          <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <Button onClick={() => setShowModal(false)} sx={{ color: 'rgba(255,255,255,0.5)', fontWeight: 800 }}>Abort</Button>
+            <Button type="submit" variant="contained" disabled={saving} sx={{ bgcolor: '#8b5cf6', fontWeight: 800 }}>{saving ? 'Spawning...' : 'Provision Entity'}</Button>
+          </DialogActions>
+        </form>
       </Dialog>
     </Box>
   );

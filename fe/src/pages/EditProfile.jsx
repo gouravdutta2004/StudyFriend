@@ -10,7 +10,7 @@ import DragAvailabilityGrid from '../components/profile/DragAvailabilityGrid';
 
 const SUBJECTS = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'Computer Science', 'History', 'Literature', 'Economics', 'Psychology', 'Engineering', 'Art', 'Music', 'Philosophy', 'Sociology', 'Statistics'];
 const LEVELS = ['High School', 'Undergraduate', 'Graduate', 'PhD', 'Self-Learner', 'Other'];
-const STYLES = ['Visual', 'Auditory', 'Reading/Writing', 'Kinesthetic', 'Mixed'];
+const STYLES = ['Visual', 'Auditory', 'Reading/Writing', 'Kinesthetic', 'Mixed', 'Pomodoro'];
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export default function EditProfile({ userId, onComplete }) {
@@ -18,7 +18,7 @@ export default function EditProfile({ userId, onComplete }) {
   const navigate = useNavigate();
   const { id: paramId } = useParams();
   const id = paramId || userId;
-  const [form, setForm] = useState({ name: '', email: '', bio: '', avatar: '', university: '', location: '', educationLevel: 'Undergraduate', studyStyle: 'Mixed', preferOnline: true, subjects: [], availability: [], isAdmin: false, isActive: true, password: '', socialLinks: { github: '', linkedin: '', instagram: '' } });
+  const [form, setForm] = useState({ name: '', email: '', bio: '', avatar: '', university: '', location: '', educationLevel: 'Undergraduate', studyStyle: 'Mixed', preferOnline: true, subjects: [], availability: [], isAdmin: false, isActive: true, password: '', socialLinks: { github: '', linkedin: '', instagram: '' }, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', weeklyGoals: [] });
   const [subjectInput, setSubjectInput] = useState('');
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef(null);
@@ -55,7 +55,7 @@ export default function EditProfile({ userId, onComplete }) {
             university: u.university || '', location: u.location || '', educationLevel: u.educationLevel || 'Undergraduate', 
             studyStyle: u.studyStyle || 'Mixed', preferOnline: u.preferOnline ?? true, subjects: u.subjects || [], 
             availability: u.availability || [], isAdmin: u.isAdmin || false, isActive: u.isActive !== undefined ? u.isActive : true, password: '',
-            socialLinks: u.socialLinks || { github: '', linkedin: '', instagram: '' }
+            socialLinks: u.socialLinks || { github: '', linkedin: '', instagram: '' }, timezone: u.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', weeklyGoals: u.weeklyGoals || []
           });
         })
         .catch(() => { toast.error('Failed to load user profile'); navigate('/dashboard'); });
@@ -65,7 +65,7 @@ export default function EditProfile({ userId, onComplete }) {
         university: user.university || '', location: user.location || '', educationLevel: user.educationLevel || 'Undergraduate', 
         studyStyle: user.studyStyle || 'Mixed', preferOnline: user.preferOnline ?? true, subjects: user.subjects || [], 
         availability: user.availability || [], isAdmin: user.isAdmin || false, isActive: user.isActive !== undefined ? user.isActive : true, password: '',
-        socialLinks: user.socialLinks || { github: '', linkedin: '', instagram: '' }
+        socialLinks: user.socialLinks || { github: '', linkedin: '', instagram: '' }, timezone: user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', weeklyGoals: user.weeklyGoals || []
       });
     }
   }, [id, user, navigate]);
@@ -320,6 +320,11 @@ export default function EditProfile({ userId, onComplete }) {
               />
             </Grid>
           </Grid>
+          <Grid container spacing={3} alignItems="center" sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Global Timezone" value={form.timezone} onChange={e => setForm({ ...form, timezone: e.target.value })} variant="outlined" size="small" helperText="Used for Matchmaking & Notifications" />
+            </Grid>
+          </Grid>
         </Paper>
 
         <Paper variant="outlined" sx={{ p: 3, borderRadius: 3 }}>
@@ -351,6 +356,35 @@ export default function EditProfile({ userId, onComplete }) {
               ))}
             </Box>
           )}
+        </Paper>
+
+        <Paper variant="outlined" sx={{ p: 3, borderRadius: 3 }}>
+          <Typography variant="h6" fontWeight={700} mb={1}>Weekly Master Goals</Typography>
+          <Typography variant="body2" color="text.secondary" mb={3}>
+            Define your core study objectives. Your profile will visualize your daily focus-time progress against these targets.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {form.weeklyGoals.map((goal, idx) => (
+              <Box key={idx} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <TextField fullWidth label={`Goal ${idx + 1} Title`} value={goal.title} onChange={e => {
+                  const newGoals = [...form.weeklyGoals];
+                  newGoals[idx].title = e.target.value;
+                  setForm({ ...form, weeklyGoals: newGoals });
+                }} size="small" />
+                <TextField type="number" label="Target Hrs" value={goal.targetHours} onChange={e => {
+                  const newGoals = [...form.weeklyGoals];
+                  newGoals[idx].targetHours = Number(e.target.value);
+                  setForm({ ...form, weeklyGoals: newGoals });
+                }} size="small" sx={{ width: 120 }} />
+                <IconButton onClick={() => setForm({ ...form, weeklyGoals: form.weeklyGoals.filter((_, i) => i !== idx) })} color="error">
+                  <Trash2 size={20} />
+                </IconButton>
+              </Box>
+            ))}
+            <Button variant="outlined" color="primary" onClick={() => setForm({ ...form, weeklyGoals: [...form.weeklyGoals, { title: 'New Goal', targetHours: 10, currentHours: 0, isCompleted: false }] })} startIcon={<Plus size={16} />} sx={{ alignSelf: 'flex-start', mt: 1 }}>
+              Add Study Goal
+            </Button>
+          </Box>
         </Paper>
 
         <Paper variant="outlined" sx={{ p: 3, borderRadius: 3 }}>

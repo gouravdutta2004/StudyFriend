@@ -29,6 +29,7 @@ const userSchema = new mongoose.Schema({
   connections: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   pendingRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   sentRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  skippedMatches: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   isActive: { type: Boolean, default: true },
   resetPasswordToken: String,
   resetPasswordExpire: Date,
@@ -55,6 +56,7 @@ const userSchema = new mongoose.Schema({
     isCompleted: { type: Boolean, default: false }
   }],
   activityLog: [{ type: Date }], // For GitHub-style heatmap
+  timezone: { type: String, default: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' },
   geoLocation: {
     type: { type: String, enum: ['Point'] },
     coordinates: { type: [Number] } // [lng, lat]

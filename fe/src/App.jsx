@@ -38,6 +38,7 @@ import StudyMap from './pages/StudyMap';
 import PendingApproval from './pages/PendingApproval';
 import OrgAdminDashboard from './pages/OrgAdminDashboard';
 import OrgAdminLogin from './pages/OrgAdminLogin';
+import Gamification from './pages/Gamification';
 
 import AIAssistantWidget from './components/AIAssistantWidget';
 import CustomCursor from './components/CustomCursor';
@@ -115,6 +116,7 @@ export default function App() {
               <Route path="/browse" element={<ProtectedRoute><Layout><Browse /></Layout></ProtectedRoute>} />
               <Route path="/matches" element={<ProtectedRoute><Layout><Matches /></Layout></ProtectedRoute>} />
               <Route path="/connections" element={<ProtectedRoute><Layout><Connections /></Layout></ProtectedRoute>} />
+              <Route path="/gamification" element={<ProtectedRoute><Layout><Gamification /></Layout></ProtectedRoute>} />
               <Route path="/sessions" element={<ProtectedRoute><Layout><Sessions /></Layout></ProtectedRoute>} />
               <Route path="/leaderboard" element={<ProtectedRoute><Layout><Leaderboard /></Layout></ProtectedRoute>} />
               <Route path="/groups" element={<ProtectedRoute><Layout><PublicGroups /></Layout></ProtectedRoute>} />

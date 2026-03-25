@@ -11,12 +11,23 @@ const { protect } = require('../middleware/auth');
 // @access  Private
 router.post('/session-end', protect, async (req, res) => {
   try {
-    const { hoursStudied } = req.body;
+    const { hoursStudied, goalId } = req.body;
     const user = await User.findById(req.user.id);
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     user.studyHours += (hoursStudied || 0);
+
+    // Auto-Sync to Active Master Goal
+    if (goalId) {
+      const activeGoal = user.weeklyGoals.id(goalId);
+      if (activeGoal) {
+        activeGoal.currentHours += (hoursStudied || 0);
+        if (activeGoal.currentHours >= activeGoal.targetHours) {
+          activeGoal.isCompleted = true;
+        }
+      }
+    }
 
     // Streak logic
     const today = new Date();

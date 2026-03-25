@@ -8,16 +8,23 @@ const {
   getDashboardStats, getUserGrowth, getSessionStats, getSystemHealth,
   getSystemConfigs, saveSystemConfig, getAuditLogs, bulkActionUsers,
   getReports, updateReport, scanContent, updateFlaggedItem,
-  getGamificationLeaderboard, awardBadge
+  getGamificationLeaderboard, awardBadge,
+  getPendingUsers, approveUser, rejectUser,
+  getOrgUsers, toggleOrgUserStatus, deleteOrgUser, getOrgDashboardStats
 } = require('../controllers/adminController');
 const { protect, admin, isOrgAdmin } = require('../middleware/auth');
 const authorizeRole = require('../middleware/rbac');
 
 // ── ORG ADMIN HYBRID AUTH ROUTES ── //
 router.post('/auth/login', require('../controllers/adminAuthController').login);
-router.get('/pending-users', protect, isOrgAdmin, require('../controllers/adminController').getPendingUsers);
-router.put('/users/:id/approve', protect, isOrgAdmin, require('../controllers/adminController').approveUser);
-router.put('/users/:id/reject', protect, isOrgAdmin, require('../controllers/adminController').rejectUser);
+router.get('/pending-users', protect, isOrgAdmin, getPendingUsers);
+router.put('/users/:id/approve', protect, isOrgAdmin, approveUser);
+router.put('/users/:id/reject', protect, isOrgAdmin, rejectUser);
+
+router.get('/org-stats', protect, isOrgAdmin, getOrgDashboardStats);
+router.get('/org-users', protect, isOrgAdmin, getOrgUsers);
+router.put('/org-users/:id/toggle', protect, isOrgAdmin, toggleOrgUserStatus);
+router.delete('/org-users/:id', protect, isOrgAdmin, deleteOrgUser);
 
 router.get('/users', protect, admin, authorizeRole('Moderator'), getUsers);
 router.post('/users', protect, admin, authorizeRole('Super Admin'), createUser);

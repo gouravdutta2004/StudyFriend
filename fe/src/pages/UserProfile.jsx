@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { User, MapPin, GraduationCap, BookOpen, MessageCircle, UserPlus, Pencil, UserMinus, Trophy, Flame, Clock, Star, Github, Linkedin, Instagram, BadgeCheck } from 'lucide-react';
+import { User, MapPin, GraduationCap, BookOpen, MessageCircle, UserPlus, Pencil, UserMinus, Trophy, Flame, Clock, Star, Github, Linkedin, Instagram, BadgeCheck, Globe, Target } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ActivityHeatmap from '../components/profile/ActivityHeatmap';
 import MindMapModal from '../components/profile/MindMapModal';
@@ -131,6 +131,11 @@ export default function UserProfile() {
                 {profile.location && (
                   <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <MapPin size={16} color={theme.palette.secondary.main} /> {profile.location}
+                  </Typography>
+                )}
+                {profile.timezone && (
+                  <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Globe size={16} color="#06b6d4" /> {profile.timezone}
                   </Typography>
                 )}
                 {ratings.count > 0 && (
@@ -278,6 +283,41 @@ export default function UserProfile() {
               </Card>
             </Grid>
           </Grid>
+
+          {/* Weekly Master Goals */}
+          {profile.weeklyGoals?.length > 0 && (
+            <Card variant="outlined" sx={{ mt: 3, p: 3, borderRadius: 4, bgcolor: 'background.paper', borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }}>
+              <Typography variant="h6" fontWeight={800} color="text.primary" display="flex" alignItems="center" gap={1} mb={3}>
+                <Target size={20} color="#ec4899" /> Weekly Master Goals
+              </Typography>
+              <Grid container spacing={3}>
+                {profile.weeklyGoals.map((goal, idx) => {
+                  const progressPct = Math.min(((goal.currentHours || 0) / goal.targetHours) * 100, 100) || 0;
+                  return (
+                    <Grid item xs={12} sm={6} key={idx}>
+                      <Box sx={{ p: 2, borderRadius: 3, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="subtitle2" fontWeight={700} noWrap sx={{ maxWidth: '70%' }}>{goal.title}</Typography>
+                          <Typography variant="caption" fontWeight={800} color="text.secondary">{goal.currentHours || 0} / {goal.targetHours}h</Typography>
+                        </Box>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={progressPct} 
+                          sx={{ 
+                            height: 8, borderRadius: 4, 
+                            bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+                            '& .MuiLinearProgress-bar': {
+                              background: progressPct >= 100 ? '#10b981' : 'linear-gradient(90deg, #ec4899, #8b5cf6)'
+                            }
+                          }} 
+                        />
+                      </Box>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </Card>
+          )}
 
           {/* Activity Heatmap Widget */}
           <ActivityHeatmap userId={targetId} />

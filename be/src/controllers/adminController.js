@@ -46,7 +46,7 @@ const updateUser = async (req, res) => {
 
     target.isActive = req.body.isActive !== undefined ? req.body.isActive : target.isActive;
     
-    const fields = ['name', 'email', 'bio', 'avatar', 'subjects', 'educationLevel', 'university', 'location', 'studyStyle', 'availability', 'preferOnline', 'password'];
+    const fields = ['name', 'email', 'bio', 'avatar', 'subjects', 'educationLevel', 'university', 'location', 'studyStyle', 'availability', 'preferOnline', 'password', 'timezone', 'weeklyGoals'];
     fields.forEach(f => {
       if (req.body[f] !== undefined) target[f] = req.body[f];
     });
@@ -106,7 +106,7 @@ const deleteUser = async (req, res) => {
 
 const createUser = async (req, res) => {
   try {
-    const { name, email, password, isAdmin, isActive } = req.body;
+    const { name, email, password, isAdmin, isActive, role, organization } = req.body;
     if (!name || !email || !password) return res.status(400).json({ message: 'Name, email, and password are required' });
     
     if (await User.findOne({ email }) || await Admin.findOne({ email })) {
@@ -114,15 +114,23 @@ const createUser = async (req, res) => {
     }
     
     let user;
-    if (isAdmin) {
+    if (isAdmin || role === 'SUPER_ADMIN') {
       user = await Admin.create({ name, email, password, isActive: isActive !== undefined ? isActive : true });
     } else {
-      user = await User.create({ name, email, password, isActive: isActive !== undefined ? isActive : true });
+      user = await User.create({ 
+        name, 
+        email, 
+        password, 
+        isActive: isActive !== undefined ? isActive : true,
+        role: role || 'USER',
+        organization: organization || null,
+        verificationStatus: role === 'ORG_ADMIN' ? 'APPROVED' : 'PENDING'
+      });
     }
     
     const userObj = user.toObject();
     delete userObj.password;
-    userObj.isAdmin = isAdmin || false;
+    userObj.isAdmin = isAdmin || role === 'SUPER_ADMIN';
     res.status(201).json(userObj);
   } catch (err) {
     if (err.code === 11000) return res.status(400).json({ message: 'This email is already registered to another user' });
@@ -457,10 +465,17 @@ const awardBadge = async (req, res) => {
 // ── ORG ADMIN CONTROLLERS ── //
 const getPendingUsers = async (req, res) => {
   try {
-    const users = await User.find({ 
-      organization: req.user.organization, 
-      verificationStatus: 'PENDING' 
-    }).select('-password').lean();
+    const query = { verificationStatus: 'PENDING' };
+    if (!req.user.isAdmin && req.user.role !== 'admin') {
+      query.organization = req.user.organization;
+    }
+    
+    // Super Admins pull the entire network's pending queue, populated with the Institution name
+    const users = await User.find(query)
+      .populate('organization', 'name domain')
+      .select('-password')
+      .lean();
+      
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -469,13 +484,18 @@ const getPendingUsers = async (req, res) => {
 
 const approveUser = async (req, res) => {
   try {
+    const query = { _id: req.params.id, verificationStatus: 'PENDING' };
+    if (!req.user.isAdmin && req.user.role !== 'admin') {
+      query.organization = req.user.organization;
+    }
+    
     const user = await User.findOneAndUpdate(
-      { _id: req.params.id, organization: req.user.organization, verificationStatus: 'PENDING' },
+      query,
       { verificationStatus: 'APPROVED' },
       { new: true }
     ).select('-password');
     
-    if (!user) return res.status(404).json({ message: 'Pending user not found in your organization' });
+    if (!user) return res.status(404).json({ message: 'Pending user not found or unauthorized.' });
     res.json(user);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -484,17 +504,83 @@ const approveUser = async (req, res) => {
 
 const rejectUser = async (req, res) => {
   try {
+    const query = { _id: req.params.id, verificationStatus: 'PENDING' };
+    if (!req.user.isAdmin && req.user.role !== 'admin') {
+      query.organization = req.user.organization;
+    }
+    
     const user = await User.findOneAndUpdate(
-      { _id: req.params.id, organization: req.user.organization, verificationStatus: 'PENDING' },
+      query,
       { verificationStatus: 'REJECTED' },
       { new: true }
     ).select('-password');
     
-    if (!user) return res.status(404).json({ message: 'Pending user not found in your organization' });
+    if (!user) return res.status(404).json({ message: 'Pending user not found or unauthorized.' });
     res.json(user);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
+};
+
+const getOrgUsers = async (req, res) => {
+  try {
+    const query = { verificationStatus: 'APPROVED' };
+    if (!req.user.isAdmin && req.user.role !== 'admin') {
+      query.organization = req.user.organization;
+    }
+    const users = await User.find(query)
+      .populate('organization', 'name domain')
+      .select('-password')
+      .lean();
+    res.json(users);
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+const toggleOrgUserStatus = async (req, res) => {
+  try {
+    const query = { _id: req.params.id, verificationStatus: 'APPROVED' };
+    if (!req.user.isAdmin && req.user.role !== 'admin') {
+      query.organization = req.user.organization;
+    }
+    const user = await User.findOne(query);
+    if (!user) return res.status(404).json({ message: 'User not found or unauthorized' });
+    
+    user.isActive = !user.isActive;
+    await user.save();
+    
+    const safeUser = user.toObject();
+    delete safeUser.password;
+    res.json(safeUser);
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+const deleteOrgUser = async (req, res) => {
+  try {
+    const query = { _id: req.params.id, verificationStatus: 'APPROVED' };
+    if (!req.user.isAdmin && req.user.role !== 'admin') {
+      query.organization = req.user.organization;
+    }
+    const user = await User.findOneAndDelete(query);
+    if (!user) return res.status(404).json({ message: 'User not found or unauthorized' });
+    
+    res.json({ message: 'Student successfully expelled from the Institution network.' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+const getOrgDashboardStats = async (req, res) => {
+  try {
+    const query = {};
+    if (!req.user.isAdmin && req.user.role !== 'admin') {
+      query.organization = req.user.organization;
+    }
+    
+    const pendingRequests = await User.countDocuments({ ...query, verificationStatus: 'PENDING' });
+    const totalStudents = await User.countDocuments({ ...query, verificationStatus: 'APPROVED' });
+    const activeStudents = await User.countDocuments({ ...query, verificationStatus: 'APPROVED', isActive: true });
+    const suspendedStudents = await User.countDocuments({ ...query, verificationStatus: 'APPROVED', isActive: false });
+    
+    res.json({ pendingRequests, totalStudents, activeStudents, suspendedStudents });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
 module.exports = { 
@@ -506,5 +592,6 @@ module.exports = {
   getSystemConfigs, saveSystemConfig, getAuditLogs, bulkActionUsers,
   getReports, updateReport, scanContent, updateFlaggedItem,
   getGamificationLeaderboard, awardBadge,
-  getPendingUsers, approveUser, rejectUser
+  getPendingUsers, approveUser, rejectUser,
+  getOrgUsers, toggleOrgUserStatus, deleteOrgUser, getOrgDashboardStats
 };

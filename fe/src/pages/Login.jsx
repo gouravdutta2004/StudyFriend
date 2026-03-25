@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Globe } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Box, Button, Container, TextField, Typography, Link, InputAdornment, IconButton } from '@mui/material';
-import { Visibility, VisibilityOff, Email, Lock } from '@mui/icons-material';
+import { Visibility, VisibilityOff, Email, Lock, Security } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { GoogleLogin } from '@react-oauth/google';
 
@@ -168,6 +168,18 @@ export default function Login() {
                     Don't have an account?{' '}
                     <Link component={RouterLink} to="/register" sx={{ fontWeight: 700, color: '#10b981', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
                       Sign up for free
+                    </Link>
+                  </Typography>
+                </Box>
+              </motion.div>
+              
+              <motion.div variants={popIn}>
+                <Box sx={{ textAlign: 'center', mt: 3, pt: 3, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <Typography variant="body2" color="rgba(255,255,255,0.4)">
+                    <Security sx={{ fontSize: 14, verticalAlign: 'middle', mr: 0.5, mb: 0.3 }} />
+                    Institution Admin?{' '}
+                    <Link component={RouterLink} to="/org-admin-login" sx={{ fontWeight: 600, color: '#f87171', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+                      Access Portal
                     </Link>
                   </Typography>
                 </Box>

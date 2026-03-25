@@ -1,78 +1,213 @@
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { Send, MessageCircle, User } from 'lucide-react';
+import { Send, MessageCircle, User, ArrowLeft, MoreVertical, Search, CheckCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import io from 'socket.io-client';
+import { Box, Typography, Button, IconButton, TextField, Avatar, Grid, useTheme, useMediaQuery, InputAdornment, Tooltip } from '@mui/material';
+import { motion, useMotionValue, useSpring, useTransform, AnimatePresence } from 'framer-motion';
+
+// --- Premium Shared Component ---
+function TiltCard({ children, sx, overrideHeight }) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const mouseXSpring = useSpring(x);
+  const mouseYSpring = useSpring(y);
+  const rotateX = useTransform(mouseYSpring, [-0.5, 0.5], ["2deg", "-2deg"]);
+  const rotateY = useTransform(mouseXSpring, [-0.5, 0.5], ["-2deg", "2deg"]);
+
+  const handleMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    const xPct = (e.clientX - rect.left) / width - 0.5;
+    const yPct = (e.clientY - rect.top) / height - 0.5;
+    x.set(xPct);
+    y.set(yPct);
+  };
+  const handleMouseLeave = () => { x.set(0); y.set(0); };
+
+  return (
+    <motion.div
+      style={{ rotateX, rotateY, perspective: 1200, display: 'flex', height: overrideHeight || '100%', width: '100%' }}
+      onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}
+    >
+      <Box sx={{ 
+        width: '100%', 
+        height: '100%',
+        bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.8)', 
+        backdropFilter: 'blur(20px)',
+        border: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)', 
+        borderRadius: '24px',
+        boxShadow: isDark ? '0 10px 40px rgba(0, 0, 0, 0.3)' : '0 10px 40px rgba(0, 0, 0, 0.05)', 
+        overflow: 'hidden', ...sx 
+      }}>
+        {children}
+      </Box>
+    </motion.div>
+  );
+}
 
 export default function Messages() {
   const { user } = useAuth();
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const [searchParams] = useSearchParams();
   const [inbox, setInbox] = useState([]);
   const [activeUser, setActiveUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMsg, setNewMsg] = useState('');
   const [sending, setSending] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [searchFilter, setSearchFilter] = useState('');
+  
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
+  // Initialize Socket.io Connection
   useEffect(() => {
-    socketRef.current = io(import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001');
+    const wsUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001';
+    socketRef.current = io(wsUrl);
+    
     if (user) {
       socketRef.current.emit('setup', user._id);
     }
+    
+    // Cleanup on unmount
     return () => socketRef.current.disconnect();
   }, [user]);
 
+  // Master Socket Event Listener
   useEffect(() => {
     if (!socketRef.current) return;
     
     const handleReceive = (newMessage) => {
-      // Check if we are actively focused on the sender
       const isFocused = activeUser && (activeUser._id === newMessage.sender._id || activeUser._id === newMessage.sender);
       if (isFocused) {
         setMessages(prev => [...prev, newMessage]);
+        // Refresh Inbox sequence to bump them to top quietly
+        loadInboxQuietly();
       } else {
-        toast.success('New Message Received!');
-        api.get('/messages/inbox').then(res => setInbox(res.data)).catch(() => {});
+        toast.success(`New Message from ${newMessage.sender.name || 'someone'}`);
+        loadInboxQuietly();
+      }
+    };
+
+    const handleTyping = (data) => {
+      // Only set typing if it's from the person we are currently looking at
+      if (activeUser && activeUser._id === data.senderId) {
+        setIsTyping(true);
+      }
+    };
+
+    const handleStopTyping = (data) => {
+      if (activeUser && activeUser._id === data.senderId) {
+        setIsTyping(false);
       }
     };
 
     socketRef.current.on('message_received', handleReceive);
-    return () => socketRef.current.off('message_received', handleReceive);
+    socketRef.current.on('typing', handleTyping);
+    socketRef.current.on('stop_typing', handleStopTyping);
+
+    return () => {
+      socketRef.current.off('message_received', handleReceive);
+      socketRef.current.off('typing', handleTyping);
+      socketRef.current.off('stop_typing', handleStopTyping);
+    };
   }, [activeUser]);
 
+  // Initial Data Fetching
   useEffect(() => {
-    api.get('/messages/inbox').then(res => setInbox(res.data)).catch(() => {});
+    fetchInboxData();
     const withId = searchParams.get('with');
     if (withId) {
       api.get(`/users/${withId}`).then(res => setActiveUser(res.data)).catch(() => {});
     }
   }, []);
 
+  // Fetch Conversation History
   useEffect(() => {
     if (activeUser) {
-      api.get(`/messages/${activeUser._id}`).then(res => setMessages(res.data)).catch(() => {});
+      setIsTyping(false);
+      fetchConversation(activeUser._id);
     }
   }, [activeUser]);
 
+  // Auto-scroller
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isTyping]);
+
+  const loadInboxQuietly = async () => {
+    try {
+      const res = await api.get('/messages/inbox');
+      setInbox(res.data);
+    } catch (err) {}
+  };
+
+  const fetchInboxData = async () => {
+    try {
+      const res = await api.get('/messages/inbox');
+      setInbox(res.data);
+    } catch (err) {
+      toast.error('Failed to decrypt Inbox Matrix');
+    }
+  };
+
+  const fetchConversation = async (id) => {
+    try {
+      const res = await api.get(`/messages/${id}`);
+      setMessages(res.data);
+    } catch (err) {
+      toast.error('Failed to decrypt conversation history');
+    }
+  };
+
+  const handleTypingEvent = (e) => {
+    setNewMsg(e.target.value);
+
+    // Emit Typing
+    if (socketRef.current && activeUser) {
+      socketRef.current.emit('typing', { senderId: user._id, receiver: activeUser._id });
+      
+      // Clear timeout if user is typing
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      
+      // Stop typing if idle for 2 seconds
+      typingTimeoutRef.current = setTimeout(() => {
+        socketRef.current.emit('stop_typing', { senderId: user._id, receiver: activeUser._id });
+      }, 2000);
+    }
+  };
 
   const handleSend = async (e) => {
     e.preventDefault();
     if (!newMsg.trim() || !activeUser) return;
+    
     setSending(true);
+    socketRef.current.emit('stop_typing', { senderId: user._id, receiver: activeUser._id });
+
     try {
       const { data } = await api.post('/messages', { receiverId: activeUser._id, content: newMsg.trim() });
       setMessages(prev => [...prev, data]);
       if (socketRef.current) socketRef.current.emit('new_message', data);
       setNewMsg('');
-    } catch { toast.error('Failed to send message'); }
-    finally { setSending(false); }
+      loadInboxQuietly(); // bump active to top
+    } catch { 
+      toast.error('Transmission failed.'); 
+    } finally { 
+      setSending(false); 
+    }
   };
 
   const getOtherUser = (msg) => {
@@ -80,92 +215,204 @@ export default function Messages() {
     return msg.sender._id === user?._id ? msg.receiver : msg.sender;
   };
 
-  return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Messages</h1>
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden" style={{ height: '70vh' }}>
-        <div className="flex h-full">
-          {/* Inbox */}
-          <div className="w-72 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-            <div className="p-4 border-b border-gray-100 dark:border-gray-700">
-              <h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Conversations</h2>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {inbox.length === 0 ? (
-                <div className="text-center py-8 text-gray-400 text-sm px-4">
-                  <MessageCircle size={32} className="mx-auto mb-2 opacity-40" />
-                  No conversations yet
-                </div>
-              ) : inbox.filter(msg => {
-                const other = getOtherUser(msg);
-                return other && !other.isAdmin; // HIDDEN SUPPORT OVERRIDES
-              }).map(msg => {
-                const other = getOtherUser(msg);
-                if (!other) return null;
-                return (
-                  <button key={msg._id} onClick={() => setActiveUser(other)}
-                    className={`w-full flex items-center gap-3 p-4 hover:bg-gray-50 dark:bg-gray-900 transition-colors text-left ${activeUser?._id === other._id ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
-                    <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center flex-shrink-0">
-                      {other.avatar ? <img src={other.avatar} className="w-10 h-10 rounded-full object-cover" alt="" /> : <User size={18} className="text-blue-600 dark:text-blue-400" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">{other.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{msg.content}</p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+  const filteredInbox = inbox.filter(msg => {
+    const other = getOtherUser(msg);
+    if (!other || other.isAdmin) return false;
+    if (searchFilter && !other.name.toLowerCase().includes(searchFilter.toLowerCase())) return false;
+    return true;
+  });
 
-          {/* Chat */}
-          <div className="flex-1 flex flex-col">
-            {activeUser ? (
-              <>
-                <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-3">
-                  <div className="w-9 h-9 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center">
-                    <User size={16} className="text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">{activeUser.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{activeUser.university || activeUser.subjects?.join(', ')}</p>
-                  </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {messages.map(msg => {
-                    const isMe = (msg.sender._id || msg.sender) === user?._id;
+  return (
+    <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', py: { xs: 2, md: 4 }, px: { xs: 1, md: 2 }, position: 'relative', overflow: 'hidden' }}>
+      {/* Dynamic Ambient Background */}
+      <Box sx={{ position: 'fixed', top: '-10%', left: '-5%', width: 500, height: 500, bgcolor: 'rgba(56, 189, 248, 0.05)', borderRadius: '50%', filter: 'blur(100px)', zIndex: 0, pointerEvents: 'none' }} />
+      <Box sx={{ position: 'fixed', bottom: '-10%', right: '-5%', width: 500, height: 500, bgcolor: 'rgba(99, 102, 241, 0.05)', borderRadius: '50%', filter: 'blur(100px)', zIndex: 0, pointerEvents: 'none' }} />
+
+      <Box sx={{ width: '100%', maxWidth: 1200, position: 'relative', zIndex: 1, height: '80vh' }}>
+        <TiltCard overrideHeight="80vh">
+          <Grid container sx={{ height: '100%', m: 0 }}>
+            
+            {/* INBOX SIDEBAR */}
+            <Grid item xs={12} md={4} sx={{ height: '100%', borderRight: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)', display: (!activeUser || !isMobile) ? 'flex' : 'none', flexDirection: 'column', bgcolor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)' }}>
+              
+              <Box sx={{ p: 3, borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)' }}>
+                <Typography variant="h5" fontWeight={900} color={isDark ? "white" : "#0f172a"} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <MessageCircle size={24} color="#38bdf8" /> Direct Messages
+                </Typography>
+                <TextField
+                  fullWidth
+                  placeholder="Search connections..."
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  variant="outlined"
+                  size="small"
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start"><Search size={16} color={isDark ? "#94a3b8" : "#64748b"}/></InputAdornment>,
+                    sx: { bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'white', borderRadius: 3, color: isDark ? 'white' : 'black', '& fieldset': { border: 'none' } }
+                  }}
+                />
+              </Box>
+
+              <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
+                {filteredInbox.length === 0 ? (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', h: '100%', py: 8, color: isDark ? 'rgba(255,255,255,0.4)': 'rgba(0,0,0,0.4)' }}>
+                    <MessageCircle size={48} style={{ opacity: 0.2, marginBottom: 16 }} />
+                    <Typography fontWeight={700}>Inbox Empty</Typography>
+                    <Typography variant="body2" mt={0.5}>Connect with Study Buddies first!</Typography>
+                  </Box>
+                ) : (
+                  filteredInbox.map(msg => {
+                    const other = getOtherUser(msg);
+                    const isActive = activeUser?._id === other._id;
                     return (
-                      <div key={msg._id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl text-sm ${isMe ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-bl-sm'}`}>
-                          <p>{msg.content}</p>
-                          <p className={`text-xs mt-1 ${isMe ? 'text-blue-200' : 'text-gray-400'}`}>
-                            {format(new Date(msg.createdAt), 'p')}
-                          </p>
-                        </div>
-                      </div>
+                      <Box
+                        key={msg._id}
+                        component={motion.div}
+                        whileHover={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }}
+                        onClick={() => setActiveUser(other)}
+                        sx={{
+                          p: 3, display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer',
+                          borderBottom: isDark ? '1px solid rgba(255,255,255,0.03)' : '1px solid rgba(0,0,0,0.03)',
+                          bgcolor: isActive ? (isDark ? 'rgba(56, 189, 248, 0.1)' : 'rgba(56, 189, 248, 0.05)') : 'transparent',
+                          transition: '0.2s'
+                        }}
+                      >
+                        <Avatar src={other.avatar} sx={{ width: 48, height: 48, bgcolor: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8' }}>
+                          {other.name.charAt(0)}
+                        </Avatar>
+                        <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
+                          <Typography variant="subtitle2" fontWeight={800} color={isDark ? "white" : "#0f172a"} noWrap>{other.name}</Typography>
+                          <Typography variant="body2" color={isActive ? '#38bdf8' : (isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)")} fontWeight={500} noWrap>
+                            {msg.content}
+                          </Typography>
+                        </Box>
+                      </Box>
                     );
-                  })}
-                  <div ref={messagesEndRef} />
-                </div>
-                <form onSubmit={handleSend} className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-3">
-                  <input className="input flex-1" placeholder="Type a message..." value={newMsg}
-                    onChange={e => setNewMsg(e.target.value)} />
-                  <button type="submit" className="btn-primary px-4" disabled={sending || !newMsg.trim()}>
-                    <Send size={16} />
-                  </button>
-                </form>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-gray-400">
-                <div className="text-center">
-                  <MessageCircle size={48} className="mx-auto mb-3 opacity-40" />
-                  <p>Select a conversation to start chatting</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+                  })
+                )}
+              </Box>
+            </Grid>
+
+            {/* ACTIVE CHAT AREA */}
+            <Grid item xs={12} md={8} sx={{ height: '100%', display: (!activeUser && isMobile) ? 'none' : 'flex', flexDirection: 'column' }}>
+              
+              {activeUser ? (
+                <>
+                  {/* Chat Header */}
+                  <Box sx={{ p: 2, borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.5)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      {isMobile && (
+                        <IconButton onClick={() => setActiveUser(null)} sx={{ color: isDark ? 'white' : 'black' }}>
+                          <ArrowLeft size={20} />
+                        </IconButton>
+                      )}
+                      <Avatar src={activeUser.avatar} sx={{ width: 40, height: 40, bgcolor: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8' }}>{activeUser.name.charAt(0)}</Avatar>
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight={900} color={isDark ? "white" : "#0f172a"}>{activeUser.name}</Typography>
+                        <Typography variant="caption" fontWeight={600} color={isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)"}>
+                          {activeUser.university || 'Active Now'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <IconButton sx={{ color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }}>
+                      <MoreVertical size={20} />
+                    </IconButton>
+                  </Box>
+
+                  {/* Messages Stream */}
+                  <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <AnimatePresence>
+                      {messages.map((msg, index) => {
+                        const isMe = (msg.sender._id || msg.sender) === user?._id;
+                        const showAvatar = index === messages.length - 1 || (messages[index + 1]?.sender?._id !== msg.sender?._id);
+                        
+                        return (
+                          <Box key={msg._id} component={motion.div} initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} sx={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', alignItems: 'flex-end', gap: 1 }}>
+                            
+                            {!isMe && showAvatar && (
+                              <Avatar src={activeUser.avatar} sx={{ width: 28, height: 28 }} />
+                            )}
+                            {!isMe && !showAvatar && <Box sx={{ width: 28 }} />}
+
+                            <Box sx={{
+                              maxWidth: '70%',
+                              p: 2,
+                              borderRadius: isMe ? '24px 24px 4px 24px' : '24px 24px 24px 4px',
+                              bgcolor: isMe ? '#6366f1' : (isDark ? 'rgba(255,255,255,0.05)' : 'white'),
+                              color: isMe ? 'white' : (isDark ? 'white' : '#0f172a'),
+                              boxShadow: isMe ? '0 10px 20px rgba(99, 102, 241, 0.2)' : '0 10px 20px rgba(0,0,0,0.02)',
+                              border: isMe ? 'none' : (isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)')
+                            }}>
+                              <Typography variant="body1" fontWeight={500} sx={{ wordBreak: 'break-word', lineHeight: 1.5 }}>{msg.content}</Typography>
+                              <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5, mt: 0.5, opacity: isMe ? 0.8 : 0.5, fontWeight: 700, fontSize: '0.65rem' }}>
+                                {format(new Date(msg.createdAt), 'h:mm a')}
+                                {isMe && <CheckCheck size={12} />}
+                              </Typography>
+                            </Box>
+
+                          </Box>
+                        );
+                      })}
+                    </AnimatePresence>
+                    
+                    {/* Live Typing Indicator Overlay */}
+                    {isTyping && (
+                      <Box component={motion.div} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'flex-end', gap: 1 }}>
+                        <Avatar src={activeUser.avatar} sx={{ width: 28, height: 28 }} />
+                        <Box sx={{ p: 1.5, px: 2, borderRadius: '24px 24px 24px 4px', bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'white', display: 'flex', gap: 1 }}>
+                          <motion.div animate={{ y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 0.8 }} style={{ width: 6, height: 6, backgroundColor: '#8b5cf6', borderRadius: '50%' }} />
+                          <motion.div animate={{ y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.2 }} style={{ width: 6, height: 6, backgroundColor: '#8b5cf6', borderRadius: '50%' }} />
+                          <motion.div animate={{ y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.4 }} style={{ width: 6, height: 6, backgroundColor: '#8b5cf6', borderRadius: '50%' }} />
+                        </Box>
+                      </Box>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </Box>
+
+                  {/* Input Form */}
+                  <form onSubmit={handleSend} style={{ padding: '16px', borderTop: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)', backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)' }}>
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                      <TextField
+                        fullWidth
+                        placeholder="Transmit message..."
+                        value={newMsg}
+                        onChange={handleTypingEvent}
+                        variant="outlined"
+                        multiline
+                        maxRows={4}
+                        sx={{
+                          '& .MuiInputBase-root': { bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'white', borderRadius: '24px', color: isDark ? 'white' : 'black', px: 3, py: 1.5 },
+                          '& fieldset': { border: 'none' }
+                        }}
+                      />
+                      <IconButton 
+                        type="submit" 
+                        disabled={sending || !newMsg.trim()}
+                        sx={{ 
+                          width: 56, height: 56, bgcolor: '#6366f1', color: 'white', borderRadius: '50%', flexShrink: 0,
+                          '&:hover': { bgcolor: '#4f46e5', transform: 'scale(1.05)' }, transition: '0.2s',
+                          '&.Mui-disabled': { bgcolor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', color: 'rgba(255,255,255,0.3)' }
+                        }}
+                      >
+                        <Send size={20} />
+                      </IconButton>
+                    </Box>
+                  </form>
+                </>
+              ) : (
+                <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)', p: 4 }}>
+                  <MessageCircle size={80} style={{ opacity: 0.2, marginBottom: 24 }} />
+                  <Typography variant="h4" fontWeight={900} color={isDark ? "white" : "#0f172a"}>Your Messages Matrix</Typography>
+                  <Typography variant="body1" fontWeight={500} mt={1} textAlign="center">
+                    Select an active connection from the left sidebar to decrypt a conversation.
+                  </Typography>
+                </Box>
+              )}
+
+            </Grid>
+          </Grid>
+        </TiltCard>
+      </Box>
+    </Box>
   );
 }

@@ -34,7 +34,7 @@ const admin = (req, res, next) => {
 };
 
 const isOrgAdmin = (req, res, next) => {
-  if (req.user && req.user.role === 'ORG_ADMIN') {
+  if (req.user && (req.user.role === 'ORG_ADMIN' || req.user.role === 'admin' || req.user.isAdmin)) {
     next();
   } else {
     res.status(403).json({ message: 'Not authorized as an Organization Admin' });

@@ -11,5 +11,6 @@ export default function ProtectedRoute({ children }) {
   if (!user) return <Navigate to="/login" replace />;
   if (user.isAdmin) return <Navigate to="/admin" replace />;
   if (user.verificationStatus === 'PENDING') return <Navigate to="/pending" replace />;
+  if (user.role === 'ORG_ADMIN' && !user.isAdmin && window.location.pathname !== '/org-admin') return <Navigate to="/org-admin" replace />;
   return children;
 }

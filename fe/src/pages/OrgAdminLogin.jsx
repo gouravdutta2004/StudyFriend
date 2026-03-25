@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Box, Button, TextField, Typography, Container, InputAdornment, IconButton, CircularProgress } from '@mui/material';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { Box, Button, TextField, Typography, Container, InputAdornment, IconButton, CircularProgress, Link } from '@mui/material';
 import { Email, Lock, Visibility, VisibilityOff, Security } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import api from '../api/axios';
@@ -118,6 +118,15 @@ export default function OrgAdminLogin() {
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'AUTHENTICATE'}
               </Button>
             </form>
+            
+            <Box sx={{ textAlign: 'center', mt: 4, pt: 3, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <Typography variant="body2" color="rgba(255,255,255,0.4)">
+                Not an administrator?{' '}
+                <Link component={RouterLink} to="/login" sx={{ fontWeight: 600, color: '#818cf8', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+                  Return to User Login
+                </Link>
+              </Typography>
+            </Box>
           </Box>
         </motion.div>
       </Container>

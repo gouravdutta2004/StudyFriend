@@ -24,12 +24,31 @@ const getProfile = async (req, res) => {
   }
 };
 
+const getMyProfile = async (req, res) => {
+  try {
+    let user = await User.findById(req.user.id).populate('connections', 'name avatar subjects university');
+    
+    if (!user) {
+      user = await Admin.findById(req.user.id);
+      if (user) {
+        user = user.toJSON();
+        user.isAdmin = true;
+      }
+    }
+    
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 const updateProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const fields = ['name', 'bio', 'avatar', 'subjects', 'educationLevel', 'university', 'location', 'studyStyle', 'availability', 'preferOnline', 'socialLinks'];
+    const fields = ['name', 'bio', 'avatar', 'subjects', 'educationLevel', 'university', 'location', 'studyStyle', 'availability', 'preferOnline', 'socialLinks', 'timezone', 'weeklyGoals'];
     fields.forEach(f => {
       if (req.body[f] !== undefined) {
         user[f] = req.body[f];
@@ -70,14 +89,27 @@ const searchUsers = async (req, res) => {
 const getMatches = async (req, res) => {
   try {
     const me = await User.findById(req.user._id);
-    const excluded = [me._id, ...me.connections, ...me.sentRequests, ...me.pendingRequests];
+    const excluded = [
+      me._id, 
+      ...me.connections, 
+      ...me.sentRequests, 
+      ...me.pendingRequests,
+      ...(me.skippedMatches || [])
+    ];
     
     // Fetch all active potential matches
-    const candidates = await User.find({
+    const query = {
       _id: { $ne: req.user._id, $nin: excluded },
       isActive: true,
       isAdmin: { $ne: true }
-    }).select('-password').lean();
+    };
+
+    // Walled Garden Entity Isolation
+    if (me.organization) {
+      query.organization = me.organization;
+    }
+
+    const candidates = await User.find(query).select('-password').lean();
 
     // Scoring Engine
     const scoredMatches = candidates.map(c => {
@@ -118,6 +150,19 @@ const getMatches = async (req, res) => {
       .slice(0, 20);
 
     res.json(filteredAndSorted);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const skipMatch = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (userId === req.user._id.toString())
+      return res.status(400).json({ message: 'Cannot skip yourself' });
+    
+    await User.findByIdAndUpdate(req.user._id, { $addToSet: { skippedMatches: userId } });
+    res.json({ message: 'User skipped successfully' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -312,8 +357,8 @@ const logStudy = async (req, res) => {
 const getLeaderboard = async (req, res) => {
   try {
     const users = await User.find({ isActive: true, isAdmin: { $ne: true } })
-      .select('name avatar studyHours streak badges')
-      .sort({ studyHours: -1 }) // Sort top study hours
+      .select('name avatar studyHours streak badges xp level')
+      .sort({ xp: -1, studyHours: -1 }) // Sort top XP
       .limit(20);
     res.json(users);
   } catch (err) {
@@ -432,4 +477,4 @@ const getNearbyUsers = async (req, res) => {
 };
 
 
-module.exports = { getProfile, updateProfile, searchUsers, getMatches, sendRequest, acceptRequest, rejectRequest, getConnections, disconnectUser, submitFeedback, getPublicSubjects, getSupportAdmin, logStudy, getLeaderboard, getQuickPeek, syncGithub, updateLocation, getNearbyUsers };
+module.exports = { getProfile, updateProfile, searchUsers, getMatches, skipMatch, sendRequest, acceptRequest, rejectRequest, getConnections, disconnectUser, submitFeedback, getPublicSubjects, getSupportAdmin, logStudy, getLeaderboard, getQuickPeek, syncGithub, updateLocation, getNearbyUsers, getMyProfile };

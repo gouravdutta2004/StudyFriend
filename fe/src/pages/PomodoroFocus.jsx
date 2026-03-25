@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Container, Typography, IconButton, Button, Avatar, Paper, Grid, useTheme, AvatarGroup, Tooltip } from '@mui/material';
-import { Play, Pause, RotateCcw, Volume2, VolumeX, Coffee, Brain, Users, Award } from 'lucide-react';
+import { Box, Container, Typography, IconButton, Button, Avatar, Paper, Grid, useTheme, AvatarGroup, Tooltip, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
+import { Play, Pause, RotateCcw, Volume2, VolumeX, Coffee, Brain, Users, Award, Target } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -18,6 +18,7 @@ export default function PomodoroFocus() {
   const [mode, setMode] = useState('focus'); // 'focus' or 'break'
   const [sessionCount, setSessionCount] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [activeGoalId, setActiveGoalId] = useState('');
 
   // Mock global scholars
   const [onlineScholars, setOnlineScholars] = useState([
@@ -53,8 +54,10 @@ export default function PomodoroFocus() {
       
       // Log session end for XP and study hours (0.41 hours = 25 mins)
       try {
-        const res = await api.post('/gamification/session-end', { hoursStudied: 25 / 60 });
-        setUser({ ...user, xp: res.data.xp, studyHours: res.data.studyHours, level: res.data.level });
+        const payload = { hoursStudied: 25 / 60 };
+        if (activeGoalId) payload.goalId = activeGoalId;
+        const res = await api.post('/gamification/session-end', payload);
+        setUser({ ...user, xp: res.data.xp, studyHours: res.data.studyHours, level: res.data.level, weeklyGoals: res.data.weeklyGoals });
         toast.success(`+${Math.round((25/60)*100)} XP Earned!`);
       } catch (err) { }
     } else {
@@ -117,6 +120,33 @@ export default function PomodoroFocus() {
                 <Button variant={mode === 'focus' ? 'contained' : 'outlined'} onClick={() => switchMode('focus')} sx={{ borderRadius: 10, px: 4, fontWeight: 800, bgcolor: mode === 'focus' ? '#6366f1' : 'transparent', color: mode === 'focus' ? 'white' : 'text.primary', border: mode !== 'focus' ? '1px solid rgba(150,150,150,0.3)' : 'none', '&:hover': { bgcolor: mode === 'focus' ? '#4f46e5' : 'rgba(99,102,241,0.1)', border: 'none' }}}>Pomodoro</Button>
                 <Button variant={mode === 'break' ? 'contained' : 'outlined'} onClick={() => switchMode('break')} sx={{ borderRadius: 10, px: 4, fontWeight: 800, bgcolor: mode === 'break' ? '#10b981' : 'transparent', color: mode === 'break' ? 'white' : 'text.primary', border: mode !== 'break' ? '1px solid rgba(150,150,150,0.3)' : 'none', '&:hover': { bgcolor: mode === 'break' ? '#059669' : 'rgba(16,185,129,0.1)', border: 'none' }}}>Short Break</Button>
               </Box>
+
+              {/* Active Objective Dropdown */}
+              {mode === 'focus' && user?.weeklyGoals?.length > 0 && (
+                <Box sx={{ mb: 4, display: 'flex', justifyContent: 'center' }}>
+                  <FormControl size="small" sx={{ minWidth: 250, textAlign: 'left' }}>
+                    <InputLabel id="active-goal-label" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Target size={16} /> Active Objective
+                    </InputLabel>
+                    <Select
+                      labelId="active-goal-label"
+                      value={activeGoalId}
+                      label="Active Objective"
+                      onChange={(e) => setActiveGoalId(e.target.value)}
+                      sx={{ borderRadius: 3, '& .MuiSelect-select': { display: 'flex', alignItems: 'center', gap: 1 } }}
+                    >
+                      <MenuItem value="">
+                        <em>None (General Study)</em>
+                      </MenuItem>
+                      {user.weeklyGoals.map(goal => (
+                        <MenuItem key={goal._id} value={goal._id} disabled={goal.isCompleted}>
+                          {goal.title} {goal.isCompleted ? '(Completed)' : ''}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+              )}
 
               <Box sx={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', my: 4 }}>
                 <svg width="300" height="300" viewBox="0 0 300 300" style={{ transform: 'rotate(-90deg)' }}>
