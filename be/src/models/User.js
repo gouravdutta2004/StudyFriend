@@ -56,8 +56,8 @@ const userSchema = new mongoose.Schema({
   }],
   activityLog: [{ type: Date }], // For GitHub-style heatmap
   geoLocation: {
-    type: { type: String, enum: ['Point'], default: 'Point' },
-    coordinates: { type: [Number], default: undefined } // [lng, lat]
+    type: { type: String, enum: ['Point'] },
+    coordinates: { type: [Number] } // [lng, lat]
   },
   subscription: {
     plan: { type: String, enum: ['basic', 'pro', 'squad'], default: 'basic' },
