@@ -17,7 +17,9 @@ const protect = async (req, res, next) => {
     }
     
     if (!req.user) return res.status(401).json({ message: 'User not found' });
-    req.user.role = decoded.role; // Stamp locally
+    if (decoded.role === 'admin') {
+      req.user.role = 'admin'; // Legacy stamp for SUPER_ADMINs
+    }
     next();
   } catch {
     res.status(401).json({ message: 'Not authorized, token failed' });
