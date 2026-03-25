@@ -63,8 +63,8 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  const googleLogin = async (credential) => {
-    const { data } = await api.post('/auth/google', { credential });
+  const googleLogin = async (credential, organizationId) => {
+    const { data } = await api.post('/auth/google', { credential, organizationId });
     localStorage.setItem('token', data.token);
     setUser(data.user);
     tryAutoSubscribePush();

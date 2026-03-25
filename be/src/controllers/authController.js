@@ -236,14 +236,38 @@ const googleAuth = async (req, res) => {
     }
 
     if (!user) {
+      if (!req.body.organizationId) {
+        return res.status(404).json({ message: 'Account not found. Please register to select an institution first.' });
+      }
+
+      const org = await Organization.findById(req.body.organizationId);
+      if (!org) return res.status(404).json({ message: 'Selected Organization not found.' });
+
+      let verificationStatus = 'PENDING';
+      role = 'USER';
+      
+      // Admin Claim check
+      if (org.authorizedAdmins && org.authorizedAdmins.map(e => e.toLowerCase()).includes(email.toLowerCase())) {
+        role = 'ORG_ADMIN';
+        verificationStatus = 'APPROVED';
+      } else {
+        const domainParts = email.split('@');
+        if (domainParts.length === 2 && domainParts[1].toLowerCase() === org.domain.toLowerCase()) {
+          verificationStatus = 'APPROVED';
+        }
+      }
+
       const randomPassword = crypto.randomBytes(20).toString('hex');
       user = await User.create({
         name,
         email,
         password: randomPassword,
         avatar: picture,
+        organization: org._id,
+        role,
+        verificationStatus
       });
-      role = 'user';
+      role = 'user'; // legacy token assignment compat
       
       try {
         const settings = await Settings.findOne();

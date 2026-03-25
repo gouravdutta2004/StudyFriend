@@ -55,6 +55,24 @@ export default function Register() {
     setStep(2);
   };
 
+  const handleGoogleSuccess = async (credentialResponse) => {
+    setLoading(true);
+    try {
+      const data = await googleLogin(credentialResponse.credential, form.organizationId);
+      if (data.user?.verificationStatus === 'PENDING') {
+        toast.error('Account pending approval by organization admin.');
+        navigate('/pending');
+      } else {
+        toast.success('Account accessed! Welcome to the network.');
+        navigate('/onboarding');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Google Auth failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.password !== form.confirmPassword) return toast.error('Passwords do not match');
@@ -135,7 +153,7 @@ export default function Register() {
 
                 <motion.div variants={popIn} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                   <Button
-                    type="submit" fullWidth variant="contained" disabled={orgLoading}
+                    type="submit" fullWidth variant="contained" disabled={orgLoading || !organizations.length}
                     endIcon={<ArrowRight />}
                     sx={{ 
                       mb: 4, py: 1.5, fontSize: '1.1rem', textTransform: 'none', fontWeight: 800, borderRadius: '100px',
@@ -159,90 +177,114 @@ export default function Register() {
             )}
 
             {step === 2 && (
-              <motion.form variants={staggerContainer} initial="hidden" animate="visible" onSubmit={handleSubmit}>
+              <motion.div variants={staggerContainer} initial="hidden" animate="visible">
                 <motion.div variants={popIn}>
-                  <Box sx={{ mb: 3, p: 2, borderRadius: '12px', bgcolor: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
-                    <Typography variant="caption" sx={{ color: '#818cf8', display: 'block' }}>
-                      <strong>Tip:</strong> Register with your official college email (e.g. <em>@{selectedOrgObj?.domain}</em>) for instant auto-approval. Personal emails require manual verification.
-                    </Typography>
+                  <Box sx={{ mb: 3, display: 'flex', justifyContent: 'center' }}>
+                    <GoogleLogin
+                      onSuccess={handleGoogleSuccess}
+                      onError={() => toast.error('Google Sign-up failed')}
+                      theme="filled_black"
+                      shape="pill"
+                      size="large"
+                      text="signup_with"
+                      width="310"
+                    />
+                  </Box>
+                </motion.div>
+                
+                <motion.div variants={popIn}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                    <Box sx={{ flex: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.1)' }} />
+                    <Typography sx={{ mx: 2, color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', fontWeight: 600 }}>OR</Typography>
+                    <Box sx={{ flex: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.1)' }} />
                   </Box>
                 </motion.div>
 
-                <motion.div variants={popIn}>
-                  <TextField
-                    margin="dense" required fullWidth id="name" label="Full Name" name="name"
-                    autoComplete="name" autoFocus value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-                    InputProps={{ startAdornment: <InputAdornment position="start"><Person sx={{ color: 'rgba(255,255,255,0.5)' }} /></InputAdornment> }}
-                    sx={{ ...inputStyles, mb: 2 }}
-                  />
-                </motion.div>
-                
-                <motion.div variants={popIn}>
-                  <TextField
-                    margin="dense" required fullWidth id="email" label="Email Address" name="email"
-                    autoComplete="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-                    InputProps={{ startAdornment: <InputAdornment position="start"><Email sx={{ color: 'rgba(255,255,255,0.5)' }} /></InputAdornment> }}
-                    sx={{ ...inputStyles, mb: 2 }}
-                  />
-                </motion.div>
-                
-                <motion.div variants={popIn}>
-                  <TextField
-                    margin="dense" required fullWidth name="password" label="Password"
-                    type={showPassword ? 'text' : 'password'} id="password" autoComplete="new-password"
-                    value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start"><Lock sx={{ color: 'rgba(255,255,255,0.5)' }} /></InputAdornment>,
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton aria-label="toggle password visibility" onClick={() => setShowPassword(!showPassword)} edge="end" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                            {showPassword ? <VisibilityOff /> : <Visibility />}
-                          </IconButton>
-                        </InputAdornment>
-                      )
-                    }}
-                    sx={{ ...inputStyles, mb: 2 }}
-                  />
-                </motion.div>
-                
-                <motion.div variants={popIn}>
-                  <TextField
-                    margin="dense" required fullWidth name="confirmPassword" label="Confirm Password"
-                    type={showConfirmPassword ? 'text' : 'password'} id="confirmPassword"
-                    value={form.confirmPassword} onChange={e => setForm({ ...form, confirmPassword: e.target.value })}
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start"><Lock sx={{ color: 'rgba(255,255,255,0.5)' }} /></InputAdornment>,
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton aria-label="toggle password visibility" onClick={() => setShowConfirmPassword(!showConfirmPassword)} edge="end" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                            {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
-                          </IconButton>
-                        </InputAdornment>
-                      )
-                    }}
-                    sx={{ ...inputStyles, mb: 4 }}
-                  />
-                </motion.div>
+                <form onSubmit={handleSubmit}>
+                  <motion.div variants={popIn}>
+                    <Box sx={{ mb: 3, p: 2, borderRadius: '12px', bgcolor: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+                      <Typography variant="caption" sx={{ color: '#818cf8', display: 'block' }}>
+                        <strong>Tip:</strong> Register with your official college email (e.g. <em>@{selectedOrgObj?.domain}</em>) for instant auto-approval. Personal emails require manual verification.
+                      </Typography>
+                    </Box>
+                  </motion.div>
 
-                <motion.div variants={popIn} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                  <Button
-                    type="submit" fullWidth variant="contained" disabled={loading}
-                    sx={{ 
-                      mb: 2, py: 1.5, fontSize: '1.1rem', textTransform: 'none', fontWeight: 800, borderRadius: '100px',
-                      bgcolor: '#10b981', color: '#020617', '&:hover': { bgcolor: '#059669' },
-                      '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' }
-                    }}
-                  >
-                    {loading ? 'Creating account...' : 'Create Account'}
-                  </Button>
-                </motion.div>
-                
-                <Box sx={{ textAlign: 'center' }}>
-                  <Button onClick={() => setStep(1)} sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'none' }}>
-                    &larr; Back to Institution select
-                  </Button>
-                </Box>
-              </motion.form>
+                  <motion.div variants={popIn}>
+                    <TextField
+                      margin="dense" required fullWidth id="name" label="Full Name" name="name"
+                      autoComplete="name" autoFocus value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                      InputProps={{ startAdornment: <InputAdornment position="start"><Person sx={{ color: 'rgba(255,255,255,0.5)' }} /></InputAdornment> }}
+                      sx={{ ...inputStyles, mb: 2 }}
+                    />
+                  </motion.div>
+                  
+                  <motion.div variants={popIn}>
+                    <TextField
+                      margin="dense" required fullWidth id="email" label="Email Address" name="email"
+                      autoComplete="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
+                      InputProps={{ startAdornment: <InputAdornment position="start"><Email sx={{ color: 'rgba(255,255,255,0.5)' }} /></InputAdornment> }}
+                      sx={{ ...inputStyles, mb: 2 }}
+                    />
+                  </motion.div>
+                  
+                  <motion.div variants={popIn}>
+                    <TextField
+                      margin="dense" required fullWidth name="password" label="Password"
+                      type={showPassword ? 'text' : 'password'} id="password" autoComplete="new-password"
+                      value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start"><Lock sx={{ color: 'rgba(255,255,255,0.5)' }} /></InputAdornment>,
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton aria-label="toggle password visibility" onClick={() => setShowPassword(!showPassword)} edge="end" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                              {showPassword ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          </InputAdornment>
+                        )
+                      }}
+                      sx={{ ...inputStyles, mb: 2 }}
+                    />
+                  </motion.div>
+                  
+                  <motion.div variants={popIn}>
+                    <TextField
+                      margin="dense" required fullWidth name="confirmPassword" label="Confirm Password"
+                      type={showConfirmPassword ? 'text' : 'password'} id="confirmPassword"
+                      value={form.confirmPassword} onChange={e => setForm({ ...form, confirmPassword: e.target.value })}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start"><Lock sx={{ color: 'rgba(255,255,255,0.5)' }} /></InputAdornment>,
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton aria-label="toggle password visibility" onClick={() => setShowConfirmPassword(!showConfirmPassword)} edge="end" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                              {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          </InputAdornment>
+                        )
+                      }}
+                      sx={{ ...inputStyles, mb: 4 }}
+                    />
+                  </motion.div>
+
+                  <motion.div variants={popIn} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                    <Button
+                      type="submit" fullWidth variant="contained" disabled={loading}
+                      sx={{ 
+                        mb: 2, py: 1.5, fontSize: '1.1rem', textTransform: 'none', fontWeight: 800, borderRadius: '100px',
+                        bgcolor: '#10b981', color: '#020617', '&:hover': { bgcolor: '#059669' },
+                        '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' }
+                      }}
+                    >
+                      {loading ? 'Creating account...' : 'Create Account'}
+                    </Button>
+                  </motion.div>
+                  
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Button onClick={() => setStep(1)} sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'none' }}>
+                      &larr; Back to Institution select
+                    </Button>
+                  </Box>
+                </form>
+              </motion.div>
             )}
           </Box>
         </motion.div>
