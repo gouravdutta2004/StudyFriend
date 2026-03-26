@@ -18,7 +18,8 @@ StudyFriend is a modern, full-stack SaaS application built on the MERN stack. It
 *   **Intelligent Matching:** Find study partners based on university, subjects, and study style (e.g., Pomodoro, Deep Work).
 *   **Real-Time Squad Hubs:** Dedicated group pages complete with:
     *   **Live Chat:** Real-time messaging using Socket.io.
-    *   **AI Tutor:** Built-in `@Gemini` chat integration for instant academic assistance.
+    *   **AI Tutor:** Dynamic `@Gemini` chat integration powered by RapidAPI for instant academic assistance.
+    *   **Daily Inspiration:** RapidAPI-powered dynamic motivational quotes on the dashboard.
     *   **Kanban Board:** Drag-and-drop task management synchronized across the squad.
     *   **Squad Vault:** Upload, share, and manage study materials and resource links.
 *   **Velocity Heatmap:** A GitHub-style daily activity tracker that dynamically logs your study sessions and interactions.
