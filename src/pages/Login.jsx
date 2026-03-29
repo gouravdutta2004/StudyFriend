@@ -9,6 +9,8 @@ import { motion } from 'framer-motion';
 import { GoogleLogin } from '@react-oauth/google';
 import Logo from '../components/Logo';
 import FloatingBackground from '../components/FloatingBackground';
+import AuthCharacter from '../components/auth/AuthCharacter';
+import MagneticButton from '../components/MagneticButton';
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -38,6 +40,16 @@ export default function Login() {
   const { login, googleLogin } = useAuth();
   const navigate = useNavigate();
 
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [charAction, setCharAction] = useState('lean');
+
+  const trackMouse = (e) => {
+    setMousePos({ 
+      x: (e.clientX / window.innerWidth) * 2 - 1, 
+      y: -(e.clientY / window.innerHeight) * 2 + 1 
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -66,10 +78,15 @@ export default function Login() {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#020617', p: 2, position: 'relative', overflow: 'hidden' }}>
+    <Box onMouseMove={trackMouse} sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#020617', p: 2, position: 'relative', overflow: 'hidden' }}>
       
       {/* Animated Abstract Background */}
       <FloatingBackground />
+
+      {/* 3D Scrollytelling Character Overlay */}
+      <Box sx={{ display: { xs: 'none', lg: 'block' } }}>
+        <AuthCharacter action={charAction} mouse={mousePos} style={{ right: '10%', top: '50%', transform: 'translateY(-50%)', width: '400px', height: '60vh' }} />
+      </Box>
 
       <Container maxWidth="xs" sx={{ position: 'relative', zIndex: 10 }}>
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 120, damping: 20 }}>
@@ -151,17 +168,19 @@ export default function Login() {
                 </Box>
               </motion.div>
 
-              <motion.div variants={popIn} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button
-                  type="submit" fullWidth variant="contained" disabled={loading}
-                  sx={{ 
-                    mb: 4, py: 1.5, fontSize: '1.1rem', textTransform: 'none', fontWeight: 800, borderRadius: '100px',
-                    bgcolor: '#6366f1', color: 'white', '&:hover': { bgcolor: '#4f46e5' },
-                    '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' }
-                  }}
-                >
-                  {loading ? 'Authenticating...' : 'Sign In'}
-                </Button>
+              <motion.div variants={popIn} onHoverStart={() => setCharAction('nod')} onHoverEnd={() => setCharAction('lean')}>
+                <MagneticButton width="100%">
+                  <Button
+                    type="submit" fullWidth variant="contained" disabled={loading}
+                    sx={{ 
+                      mb: 4, py: 1.5, fontSize: '1.1rem', textTransform: 'none', fontWeight: 800, borderRadius: '100px',
+                      bgcolor: '#6366f1', color: 'white', '&:hover': { bgcolor: '#4f46e5' },
+                      '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' }
+                    }}
+                  >
+                    {loading ? 'Authenticating...' : 'Sign In'}
+                  </Button>
+                </MagneticButton>
               </motion.div>
               
               <motion.div variants={popIn}>

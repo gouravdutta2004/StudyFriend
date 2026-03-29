@@ -7,7 +7,7 @@ import Lenis from 'lenis';
 
 // Modular dynamic components
 import FloatingBackground from '../components/FloatingBackground';
-import ReactiveHero from '../components/landing/ReactiveHero';
+import CinematicScrollEngine from '../components/landing/CinematicScrollEngine';
 import PlayableSandbox from '../components/landing/PlayableSandbox';
 import VelocityMarquee from '../components/landing/VelocityMarquee';
 import Logo from '../components/Logo';
@@ -107,65 +107,7 @@ function LandingNavbar() {
 }
 
 // --- Component: Bento Box Features Section ---
-function BentoFeatures() {
-  return (
-    <Container maxWidth="lg" sx={{ py: 20, position: 'relative', zIndex: 10 }}>
-      <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={staggerContainer}>
-        <Box textAlign="center" mb={10}>
-          <motion.div variants={fadeUpSpring}><Typography variant="subtitle2" color="#818cf8" fontWeight={800} sx={{ letterSpacing: 2, textTransform: 'uppercase', mb: 2 }}>The Framework</Typography></motion.div>
-          <motion.div variants={fadeUpSpring}><Typography variant="h2" fontWeight={900} color="white" sx={{ fontSize: { xs: '2.5rem', md: '4rem' }, letterSpacing: '-1px' }}>Engineered for Focus.</Typography></motion.div>
-        </Box>
-
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gridTemplateRows: { xs: 'auto', md: 'repeat(2, 300px)' }, gap: 3 }}>
-          {/* Matchmaking Card */}
-          <Box sx={{ gridColumn: { md: 'span 2' }, gridRow: 'span 1' }}>
-            <motion.div variants={fadeUpSpring} style={{ height: '100%' }}>
-              <TiltCard sx={{ p: 5, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <Box sx={{ width: 64, height: 64, borderRadius: '20px', bgcolor: 'rgba(99, 102, 241, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 3 }}>
-                  <Target size={32} color="#818cf8" />
-                </Box>
-                <Typography variant="h4" fontWeight={800} color="white" mb={2}>Algorithmic Matching</Typography>
-                <Typography variant="h6" color="rgba(255,255,255,0.6)" fontWeight={400}>Instantly map attributes like availability, major, and goals to pair you with the top 1% of compatible study partners worldwide.</Typography>
-              </TiltCard>
-            </motion.div>
-          </Box>
-          {/* AI Assist Card */}
-          <Box sx={{ gridColumn: { md: 'span 1' }, gridRow: 'span 1' }}>
-             <motion.div variants={fadeUpSpring} style={{ height: '100%' }}>
-              <TiltCard sx={{ p: 5, background: 'linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(139, 92, 246, 0.1) 100%)' }}>
-                <MessageSquare size={32} color="#c084fc" style={{ marginBottom: 24 }} />
-                <Typography variant="h5" fontWeight={800} color="white" mb={2}>Gemini Integrated</Typography>
-                <Typography variant="body1" color="rgba(255,255,255,0.6)">Your own AI tutor lives inside every squad hub to explain, summarize, and assist 24/7.</Typography>
-              </TiltCard>
-            </motion.div>
-          </Box>
-          {/* Gamification Card */}
-          <Box sx={{ gridColumn: { md: 'span 1' }, gridRow: 'span 1' }}>
-             <motion.div variants={fadeUpSpring} style={{ height: '100%' }}>
-              <TiltCard sx={{ p: 5 }}>
-                <Award size={32} color="#10b981" style={{ marginBottom: 24 }} />
-                <Typography variant="h5" fontWeight={800} color="white" mb={2}>Velocity Tracking</Typography>
-                <Typography variant="body1" color="rgba(255,255,255,0.6)">Earn XP, unlock badges, and analyze deep metric heatmaps of your study habits.</Typography>
-              </TiltCard>
-            </motion.div>
-          </Box>
-          {/* Real-time Hubs Card */}
-          <Box sx={{ gridColumn: { md: 'span 2' }, gridRow: 'span 1' }}>
-             <motion.div variants={fadeUpSpring} style={{ height: '100%' }}>
-              <TiltCard sx={{ p: 5, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <Box sx={{ width: 64, height: 64, borderRadius: '20px', bgcolor: 'rgba(236, 72, 153, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 3 }}>
-                  <Zap size={32} color="#ec4899" />
-                </Box>
-                <Typography variant="h4" fontWeight={800} color="white" mb={2}>Real-Time Squad Hubs</Typography>
-                <Typography variant="h6" color="rgba(255,255,255,0.6)" fontWeight={400}>No more disconnected tools. Chat, share resources in the vault, and track group tasks on Kanban boards—all in singular, synchronized spaces.</Typography>
-              </TiltCard>
-            </motion.div>
-          </Box>
-        </Box>
-      </motion.div>
-    </Container>
-  );
-}
+// Converted directly into CinematicScrollEngine.jsx
 
 // --- Component: Pricing Section ---
 function Pricing() {
@@ -278,14 +220,12 @@ export default function Landing() {
       <FloatingBackground />
       
       {/* Dynamic & Iterative Modules */}
-      <ReactiveHero />
+      <CinematicScrollEngine />
       
       {/* Playable sandbox embedded before Marquee */}
       <PlayableSandbox />
       
       <VelocityMarquee baseVelocity={-2} />
-      
-      <BentoFeatures />
       
       <Pricing />
       
