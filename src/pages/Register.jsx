@@ -40,6 +40,7 @@ export default function Register() {
   const [joinType, setJoinType] = useState(null); // 'institution' | 'global'
   
   const [selectedCollege, setSelectedCollege] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);

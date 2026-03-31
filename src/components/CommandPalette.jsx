@@ -47,7 +47,7 @@ export default function CommandPalette() {
         question: inputValue
       });
       setAiResponse(res.data.answer);
-    } catch (err) {
+    } catch {
       setAiResponse("**Connection Interrupted.** \nI could not securely reach the Gemini Core.");
     } finally {
       setIsThinking(false);

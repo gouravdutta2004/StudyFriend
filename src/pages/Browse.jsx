@@ -26,7 +26,10 @@ export default function Browse() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { search(); }, []);
+  useEffect(() => { 
+    search(); 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (user?.sentRequests) setSentReqs(new Set(user.sentRequests.map(r => r._id || r)));

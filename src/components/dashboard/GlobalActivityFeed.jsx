@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Card, CardContent, Avatar } from '@mui/material';
+import { Box, Typography, Card, CardContent, Avatar, useTheme } from '@mui/material';
 import { Activity } from 'lucide-react';
 import api from '../../api/axios';
 
 export default function GlobalActivityFeed() {
+  const theme = useTheme();
   const [logs, setLogs] = useState([]);
 
   useEffect(() => {
@@ -19,7 +20,7 @@ export default function GlobalActivityFeed() {
   }, []);
 
   return (
-    <Box sx={{ p: 4, height: '100%', maxHeight: 400, display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ p: 4, display: 'flex', flex: 1, flexDirection: 'column', height: '100%' }}>
       <Typography variant="h6" fontWeight={900} display="flex" alignItems="center" gap={1.5} mb={3}>
         <Activity size={20} color="#8b5cf6" /> Live Community Link
       </Typography>
@@ -40,9 +41,9 @@ export default function GlobalActivityFeed() {
             gap: 2, 
             p: 2, 
             borderRadius: '20px', 
-            bgcolor: 'rgba(255,255,255,0.03)', 
-            border: '1px solid rgba(255,255,255,0.05)',
-            '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(139, 92, 246, 0.3)' }
+            bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', 
+            border: theme.palette.mode === 'dark' ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)',
+            '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', borderColor: 'rgba(139, 92, 246, 0.3)' }
           }}>
             <Avatar src={log.userId?.avatar} sx={{ width: 40, height: 40, bgcolor: '#8b5cf6', fontWeight: 900 }}>
                {log.userId?.name?.[0] || 'U'}

@@ -18,7 +18,6 @@ export default function AIAssistantWidget() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const muiTheme = useMuiTheme();
   const messagesEndRef = useRef(null);
   
   const isBasic = user?.subscription?.plan === 'basic';

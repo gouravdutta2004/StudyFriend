@@ -82,7 +82,7 @@ const Layout = ({ children }) => {
       <Sidebar mobileOpen={false} setMobileOpen={() => {}} />
 
       {/* Main Content Area */}
-      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowX: 'hidden' }}>
         <GlobalAnnouncementBanner />
         <Navbar onMenuClick={() => setMobileOpen(true)} />
         <Box component="main" sx={{ flexGrow: 1, p: 0, overflowX: 'hidden' }}>

@@ -1,3 +1,6 @@
+/* eslint-env serviceworker */
+/* global clients */
+
 // StudyFriend Service Worker - Browser Push Notifications
 // This file MUST be in the /public folder to be served at the root URL
 
@@ -7,7 +10,7 @@ self.addEventListener('push', function (event) {
   let data = {};
   try {
     data = event.data.json();
-  } catch (e) {
+  } catch {
     data = { title: 'StudyFriend', body: event.data.text() };
   }
 
@@ -49,10 +52,11 @@ self.addEventListener('notificationclick', function (event) {
   );
 });
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim());
+self.addEventListener('activate', () => {
+  // eslint-disable-next-line no-undef
+  clients.claim();
 });

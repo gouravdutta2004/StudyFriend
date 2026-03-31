@@ -47,8 +47,11 @@ export default function Sidebar({ mobileOpen = false, setMobileOpen = () => {} }
       }
     });
 
-    return () => socket.disconnect();
-  }, [user, location.pathname]);
+    return () => {
+      socket.off('message_received');
+      socket.disconnect();
+    };
+  }, [user?._id, location.pathname]);
 
   const content = (
     <Box sx={{ 

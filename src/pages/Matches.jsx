@@ -20,6 +20,7 @@ export default function Matches() {
 
   useEffect(() => {
     fetchMatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchMatches = async () => {

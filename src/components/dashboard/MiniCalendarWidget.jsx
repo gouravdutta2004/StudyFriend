@@ -1,95 +1,70 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Typography, IconButton, useTheme, Tooltip } from '@mui/material';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, format, isSameMonth, isSameDay, addMonths, subMonths, parseISO } from 'date-fns';
-import { motion, AnimatePresence } from 'framer-motion';
-import api from '../../api/axios';
+import React, { useState } from 'react';
+import { Box, Typography, IconButton } from '@mui/material';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isToday } from 'date-fns';
 
 export default function MiniCalendarWidget() {
-  const theme = useTheme();
-  const isDark = theme.palette.mode === 'dark';
-  
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchSessions = async () => {
-      try {
-        const res = await api.get('/sessions/my');
-        setSessions(res.data);
-      } catch (err) {}
-      finally { setLoading(false); }
-    };
-    fetchSessions();
-  }, [currentMonth]);
-
-  const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
-  const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart);
   const endDate = endOfWeek(monthEnd);
-  const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
+
+  const days = eachDayOfInterval({
+    start: startDate,
+    end: endDate,
+  });
+
+  const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+  const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
+
+  const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   return (
-    <Box sx={{ p: { xs: 2.5, sm: 4 }, height: '100%', display: 'flex', flexDirection: 'column', minHeight: '280px' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h6" fontWeight={900} display="flex" alignItems="center" gap={1.5} color={isDark ? "white" : "#0f172a"}>
-          <CalendarIcon size={20} color="#10b981" /> Agenda Matrix
+        <Typography variant="h6" fontWeight={900} display="flex" alignItems="center" gap={1.5} color="white">
+          <CalendarIcon size={20} color="#6366F1" /> Overview
         </Typography>
-        <Box display="flex" alignItems="center" gap={1} bgcolor={isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)'} borderRadius="100px" p={0.5}>
-          <IconButton onClick={prevMonth} size="small" sx={{ p: 0.5 }}><ChevronLeft size={16} /></IconButton>
-          <Typography variant="caption" fontWeight={800} width={70} sx={{ textAlign: 'center', display: 'block' }}>{format(currentMonth, 'MMM yyyy')}</Typography>
-          <IconButton onClick={nextMonth} size="small" sx={{ p: 0.5 }}><ChevronRight size={16} /></IconButton>
+        <Box display="flex" alignItems="center" gap={1} bgcolor="rgba(99,102,241,0.1)" borderRadius="100px" p={0.5} border="1px solid rgba(99,102,241,0.2)">
+          <IconButton onClick={prevMonth} size="small" sx={{ p: 0.5, color: '#6366F1' }}><ChevronLeft size={16} /></IconButton>
+          <Typography variant="caption" fontWeight={800} width={60} sx={{ textAlign: 'center', color: 'white' }}>{format(currentMonth, 'MMM yyyy')}</Typography>
+          <IconButton onClick={nextMonth} size="small" sx={{ p: 0.5, color: '#6366F1' }}><ChevronRight size={16} /></IconButton>
         </Box>
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, mb: 1 }}>
-        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
-          <Typography key={i} variant="caption" fontWeight={900} color={isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.4)"} textAlign="center">{day}</Typography>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, mb: 2 }}>
+        {weekDays.map((day, i) => (
+          <Typography key={i} variant="caption" fontWeight={800} color="rgba(255,255,255,0.4)" textAlign="center">
+            {day}
+          </Typography>
         ))}
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: { xs: 0.5, sm: 1 }, flex: 1 }}>
-        <AnimatePresence mode="popLayout">
-          {calendarDays.map((day) => {
-            const dateEvents = sessions.filter(s => isSameDay(parseISO(s.scheduledAt), day));
-            const isToday = isSameDay(day, new Date());
-            const isCurrentMonth = isSameMonth(day, currentMonth);
-
-            return (
-              <Tooltip key={day.toString()} title={dateEvents.length > 0 ? `${dateEvents.length} session(s)` : ''} arrow placement="top">
-                <Box 
-                  component={motion.div}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  sx={{ 
-                    aspectRatio: '1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    borderRadius: '12px', border: isToday ? '2px solid #10b981' : '1px solid transparent',
-                    bgcolor: isToday ? 'transparent' : isCurrentMonth ? (isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)') : 'transparent',
-                    color: isCurrentMonth ? 'text.primary' : 'text.disabled',
-                    opacity: isCurrentMonth ? 1 : 0.3,
-                    position: 'relative', cursor: dateEvents.length > 0 ? 'pointer' : 'default',
-                    '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }
-                  }}
-                >
-                  <Typography variant="caption" fontWeight={isToday ? 900 : 700}>{format(day, 'd')}</Typography>
-                  
-                  {/* Event Dots Under Date */}
-                  {dateEvents.length > 0 && (
-                    <Box sx={{ position: 'absolute', bottom: 4, display: 'flex', gap: 0.3 }}>
-                      {dateEvents.slice(0, 3).map((e, idx) => (
-                        <Box key={idx} sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: e.isOnline ? '#6366f1' : '#10b981', boxShadow: `0 0 6px ${e.isOnline ? '#6366f1' : '#10b981'}` }} />
-                      ))}
-                    </Box>
-                  )}
-                </Box>
-              </Tooltip>
-            );
-          })}
-        </AnimatePresence>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, flex: 1 }}>
+        {days.map((day, i) => {
+          const isCurrentMonth = isSameMonth(day, currentMonth);
+          const isCurrentDay = isToday(day);
+          
+          return (
+            <Box 
+              key={i} 
+              sx={{ 
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s',
+                color: isCurrentDay ? 'white' : (isCurrentMonth ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.2)'),
+                bgcolor: isCurrentDay ? '#6366F1' : 'transparent',
+                fontWeight: isCurrentDay ? 900 : 700,
+                boxShadow: isCurrentDay ? '0 0 15px rgba(99,102,241,0.6)' : 'none',
+                minHeight: '36px',
+                '&:hover': { bgcolor: isCurrentDay ? '#8B5CF6' : 'rgba(255,255,255,0.1)' }
+              }}
+            >
+              <Typography variant="body2">{format(day, 'd')}</Typography>
+            </Box>
+          );
+        })}
       </Box>
     </Box>
   );

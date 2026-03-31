@@ -32,29 +32,31 @@ export const SocketProvider = ({ children }) => {
         newSocket.on('notification', (data) => {
             toast(data.message, {
                 icon: '🔔',
-                style: {
-                    borderRadius: '10px',
-                    background: '#333',
-                    color: '#fff',
-                },
+                style: { borderRadius: '10px', background: '#333', color: '#fff' },
             });
         });
 
         newSocket.on('message_received', (message) => {
-            // Check if user is currently on the messages page
             if (!window.location.pathname.includes('/messages')) {
-                toast(`New message from ${message.senderName || 'a connection'}`, {
+                const senderName = message.sender?.name || 'a connection';
+                toast(`New message from ${senderName}`, {
                     icon: '💬',
-                    style: {
-                        borderRadius: '10px',
-                        background: '#333',
-                        color: '#fff',
-                    },
+                    style: { borderRadius: '10px', background: '#333', color: '#fff' },
                 });
             }
         });
 
+        newSocket.on('quest_completed', (data) => {
+            toast.success(`🎉 Quest Completed: ${data.questName}\n+${data.xp} XP!`, {
+                duration: 5000,
+                style: { borderRadius: '16px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: '#fff', fontWeight: 'bold', padding: '16px' },
+            });
+        });
+
         return () => {
+            newSocket.off('notification');
+            newSocket.off('message_received');
+            newSocket.off('quest_completed');
             newSocket.disconnect();
             setSocket(null);
         };

@@ -21,10 +21,9 @@ export default function Navbar({ onMenuClick }) {
   useEffect(() => {
     if (user && !user.isAdmin) {
       api.get('/notifications').then(res => setNotifications(res.data)).catch(() => {});
-      // Silently re-subscribe if permission was already granted
       autoSubscribeIfPermitted();
     }
-  }, [user]);
+  }, [user, autoSubscribeIfPermitted]);
 
   const markRead = async (id) => {
     try {
