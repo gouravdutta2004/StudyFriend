@@ -1,191 +1,267 @@
-import React from 'react';
-import { Box, useTheme, ButtonBase } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Tooltip, Avatar, useTheme } from '@mui/material';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
-import { BookOpen, Search, Users, Trophy, Calendar, Globe, MessageCircle, CreditCard, MapPin, Shield, Gamepad2, Joystick } from 'lucide-react';
+import {
+  BookOpen, Search, Users, Trophy, Calendar, Globe,
+  MessageCircle, CreditCard, MapPin, Shield, Gamepad2,
+  Joystick, ChevronRight, Zap, Network
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import Logo from './Logo';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
+import { motion, AnimatePresence } from 'framer-motion';
 
-const navLinks = [
-  { to: '/dashboard', icon: BookOpen, label: 'Dashboard' },
-  { to: '/browse', icon: Search, label: 'Browse' },
-  { to: '/matches', icon: Users, label: 'Matches' },
-  { to: '/gamification', icon: Gamepad2, label: 'Quests & XP' },
-  { to: '/arcade', icon: Joystick, label: 'Recess Arcade' },
-  { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
-  { to: '/sessions', icon: Calendar, label: 'Sessions' },
-  { to: '/groups', icon: Globe, label: 'Squads' },
-  { to: '/map', icon: MapPin, label: 'Nearby Map' },
-  { to: '/messages', icon: MessageCircle, label: 'Messages' },
-  { to: '/connections', icon: Users, label: 'Connections' },
-  { to: '/billing', icon: CreditCard, label: 'Billing' },
+/* ─── Nav items ─── */
+const NAV = [
+  { to: '/dashboard',    icon: BookOpen,       label: 'Dashboard',     color: '#6366f1' },
+  { to: '/browse',       icon: Search,         label: 'Browse',        color: '#22d3ee' },
+  { to: '/matches',      icon: Users,          label: 'Matches',       color: '#34d399' },
+  { to: '/gamification', icon: Gamepad2,       label: 'Quests & XP',   color: '#a78bfa' },
+  { to: '/arcade',       icon: Joystick,       label: 'Arcade',        color: '#f59e0b' },
+  { to: '/leaderboard',  icon: Trophy,         label: 'Leaderboard',   color: '#eab308' },
+  { to: '/sessions',     icon: Calendar,       label: 'Sessions',      color: '#38bdf8' },
+  { to: '/groups',       icon: Globe,          label: 'Squads',        color: '#10b981' },
+  { to: '/map',          icon: MapPin,         label: 'Nearby Map',    color: '#f97316' },
+  { to: '/messages',     icon: MessageCircle,  label: 'Messages',      color: '#818cf8' },
+  { to: '/connections',  icon: Users,          label: 'Connections',   color: '#06b6d4' },
+  { to: '/billing',      icon: CreditCard,     label: 'Billing',       color: '#f43f5e' },
 ];
 
+const SECTION_BREAKS = [3, 6, 9]; // indices where a divider appears
+
+/* ─── Rail item ─── */
+function RailItem({ to, icon: Icon, label, color, isActive, expanded, unread, onClick }) {
+  return (
+    <Tooltip title={!expanded ? label : ''} placement="right" arrow>
+      <Box
+        component={RouterLink}
+        to={to}
+        onClick={onClick}
+        sx={{
+          display: 'flex', alignItems: 'center',
+          gap: expanded ? 1.5 : 0,
+          px: expanded ? 1.5 : 0,
+          justifyContent: expanded ? 'flex-start' : 'center',
+          width: '100%', height: 44,
+          borderRadius: '12px', textDecoration: 'none',
+          position: 'relative', overflow: 'hidden',
+          bgcolor: isActive ? `${color}18` : 'transparent',
+          transition: 'all 0.2s cubic-bezier(.4,0,.2,1)',
+          '&:hover': {
+            bgcolor: isActive ? `${color}22` : 'rgba(255,255,255,0.05)',
+          },
+        }}
+      >
+        {/* Active pill indicator */}
+        <AnimatePresence>
+          {isActive && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 24, opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              style={{
+                position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
+                width: 3, borderRadius: '0 3px 3px 0',
+                background: color,
+                boxShadow: `0 0 8px ${color}`,
+              }}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Icon */}
+        <Box sx={{ position: 'relative', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28 }}>
+          <Icon
+            size={19}
+            strokeWidth={isActive ? 2.5 : 1.8}
+            color={isActive ? color : 'rgba(255,255,255,0.45)'}
+            style={{ transition: 'all 0.2s' }}
+          />
+          {/* Badge */}
+          {unread > 0 && (
+            <Box sx={{
+              position: 'absolute', top: -4, right: -4,
+              width: 15, height: 15, borderRadius: '50%',
+              bgcolor: '#ef4444', border: '2px solid #06090f',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.5rem', fontWeight: 900, color: 'white',
+            }}>
+              {unread > 9 ? '9+' : unread}
+            </Box>
+          )}
+        </Box>
+
+        {/* Label — slides in when expanded */}
+        <AnimatePresence>
+          {expanded && (
+            <motion.span
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              transition={{ duration: 0.18 }}
+              style={{
+                fontSize: '0.82rem',
+                fontWeight: isActive ? 700 : 500,
+                color: isActive ? color : 'rgba(255,255,255,0.6)',
+                whiteSpace: 'nowrap',
+                letterSpacing: 0.2,
+              }}
+            >
+              {label}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </Box>
+    </Tooltip>
+  );
+}
+
+/* ══════════════ RAIL SIDEBAR ══════════════ */
 export default function Sidebar({ mobileOpen = false, setMobileOpen = () => {} }) {
   const { user } = useAuth();
   const location = useLocation();
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
+  const [expanded, setExpanded] = useState(false);
   const [unreadCount, setUnreadCount] = React.useState(0);
 
   React.useEffect(() => {
     if (!user) return;
-    const socket = io(import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001', {
-      withCredentials: true
-    });
-    
+    const socket = io(import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001', { withCredentials: true });
     socket.emit('setup', user._id);
-    
-    socket.on('message_received', (newMessage) => {
+    socket.on('message_received', (msg) => {
       if (!location.pathname.startsWith('/messages')) {
-        setUnreadCount(prev => prev + 1);
-        toast(`New message from ${newMessage.sender?.name || 'someone'}`, {
+        setUnreadCount(p => p + 1);
+        toast(`New message from ${msg.sender?.name || 'someone'}`, {
           icon: '💬',
-          style: { borderRadius: '100px', background: '#333', color: '#fff', fontWeight: 'bold' }
+          style: { borderRadius: '100px', background: '#1e1b4b', color: '#fff', fontWeight: 'bold' }
         });
       }
     });
-
-    return () => {
-      socket.off('message_received');
-      socket.disconnect();
-    };
+    return () => { socket.off('message_received'); socket.disconnect(); };
   }, [user?._id, location.pathname]);
 
-  const content = (
-    <Box sx={{ 
-      height: '100%', 
-      display: 'flex', 
-      flexDirection: 'column', 
-      bgcolor: isDark ? 'rgba(15, 23, 42, 0.4)' : 'rgba(255, 255, 255, 0.5)', 
-      backdropFilter: 'blur(16px)',
-      border: '1px solid', 
-      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-      borderRadius: { xs: 0, md: '24px' },
-      boxShadow: isDark ? '0 4px 30px rgba(0, 0, 0, 0.5)' : '0 4px 30px rgba(0, 0, 0, 0.03)',
-      overflow: 'hidden'
-    }}>
-      
-      {/* Brand Logo */}
-      <Box sx={{ p: 3, pb: 4 }}>
-        <Logo size={36} textColor={isDark ? 'white' : 'text.primary'} />
+  const railWidth = expanded ? 220 : 72;
+
+  const RailContent = (
+    <Box
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
+      sx={{
+        height: '100%', display: 'flex', flexDirection: 'column',
+        width: railWidth, transition: 'width 0.25s cubic-bezier(.4,0,.2,1)',
+        overflow: 'hidden',
+        bgcolor: isDark ? 'rgba(4,6,18,0.92)' : 'rgba(255,255,255,0.92)',
+        backdropFilter: 'blur(24px)',
+        borderRight: '1px solid',
+        borderColor: isDark ? 'rgba(99,102,241,0.1)' : 'rgba(0,0,0,0.06)',
+        boxShadow: isDark ? '4px 0 32px rgba(0,0,0,0.5)' : '4px 0 20px rgba(0,0,0,0.06)',
+      }}
+    >
+      {/* ── Logo / Brand ── */}
+      <Box sx={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: expanded ? 'flex-start' : 'center', px: expanded ? 2 : 0, flexShrink: 0, borderBottom: '1px solid', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }}>
+        <Box sx={{ width: 36, height: 36, borderRadius: '10px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 0 16px rgba(99,102,241,0.4)', bgcolor: 'white' }}>
+          <img src="/logo.png" alt="StudyFriend" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </Box>
+        <AnimatePresence>
+          {expanded && (
+            <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.18 }}>
+              <Box sx={{ ml: 1.5 }}>
+                <Box sx={{ fontWeight: 900, fontSize: '1rem', color: isDark ? 'white' : '#0f172a', lineHeight: 1, letterSpacing: -0.5, fontFamily: "'Inter',sans-serif" }}>StudyFriend</Box>
+              </Box>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </Box>
 
-        {/* Navigation Links */}
-        <Box sx={{ px: 2, flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-          {(!user || user.role !== 'ORG_ADMIN' || user.isAdmin) && (
-            <Box sx={{ px: 2, mb: 1, color: isDark ? 'rgba(255,255,255,0.4)' : 'text.secondary', fontWeight: 700, fontSize: '0.75rem', letterSpacing: '1px', textTransform: 'uppercase' }}>
-              Menu
-            </Box>
+      {/* ── User Avatar ── */}
+      <Box sx={{ py: 2, display: 'flex', alignItems: 'center', justifyContent: expanded ? 'flex-start' : 'center', px: expanded ? 2 : 'auto', gap: expanded ? 1.5 : 0, flexShrink: 0, transition: 'all 0.25s' }}>
+        <Avatar
+          src={user?.avatar}
+          sx={{ width: 36, height: 36, flexShrink: 0, border: '2px solid', borderColor: '#6366f1', bgcolor: 'rgba(99,102,241,0.2)', fontSize: 14, fontWeight: 800, boxShadow: '0 0 10px rgba(99,102,241,0.3)', color: '#818cf8' }}
+        >
+          {user?.name?.[0]}
+        </Avatar>
+        <AnimatePresence>
+          {expanded && (
+            <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.16 }} style={{ overflow: 'hidden' }}>
+              <Box sx={{ fontSize: '0.78rem', fontWeight: 700, color: isDark ? 'white' : '#0f172a', whiteSpace: 'nowrap' }}>{user?.name?.split(' ')[0]}</Box>
+              <Box sx={{ fontFamily: 'monospace', fontSize: '0.55rem', color: '#6366f1', letterSpacing: 1, fontWeight: 700 }}>LVL {user?.level || 1} · {user?.xp || 0} XP</Box>
+            </motion.div>
           )}
-          
-          {(!user || user.role !== 'ORG_ADMIN' || user.isAdmin) && navLinks.map(({ to, icon: Icon, label }) => {
-            const isActive = location.pathname.startsWith(to);
+        </AnimatePresence>
+      </Box>
+
+      {/* ── Nav Items ── */}
+      <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', px: 1, pb: 1,
+        '&::-webkit-scrollbar': { display: 'none' },
+      }}>
+        {NAV.map(({ to, icon, label, color }, i) => {
+          const isActive = location.pathname.startsWith(to);
           return (
-            <ButtonBase
-              component={RouterLink}
-              to={to}
-              key={to}
-              onClick={() => setMobileOpen(false)}
-              sx={{
-                justifyContent: 'flex-start',
-                width: '100%',
-                mb: 0.5,
-                p: 1.5,
-                borderRadius: '12px',
-                color: isActive ? '#6366f1' : (isDark ? 'rgba(255,255,255,0.6)' : 'text.secondary'),
-                bgcolor: isActive ? (isDark ? 'rgba(99, 102, 241, 0.1)' : 'rgba(99, 102, 241, 0.05)') : 'transparent',
-                '&:hover': {
-                  bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)',
-                  color: isDark ? 'white' : 'text.primary'
-                },
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2
-              }}
-            >
-              <Box sx={{ position: 'relative' }}>
-                <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-                {to === '/messages' && unreadCount > 0 && (
-                  <Box sx={{
-                    position: 'absolute', top: -5, right: -5,
-                    bgcolor: '#ef4444', color: 'white', fontSize: '0.65rem',
-                    fontWeight: 800, minWidth: 16, height: 16,
-                    borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                  }}>
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </Box>
-                )}
-              </Box>
-              <Box sx={{ fontWeight: isActive ? 700 : 500, fontSize: '0.95rem' }}>
-                {label}
-              </Box>
-            </ButtonBase>
+            <React.Fragment key={to}>
+              {SECTION_BREAKS.includes(i) && (
+                <Box sx={{ my: 1, mx: expanded ? 1 : 'auto', height: '1px', width: expanded ? 'auto' : 28, bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)', transition: 'all 0.25s' }} />
+              )}
+              <RailItem
+                to={to} icon={icon} label={label} color={color}
+                isActive={isActive} expanded={expanded}
+                unread={to === '/messages' ? unreadCount : 0}
+                onClick={() => setMobileOpen(false)}
+              />
+            </React.Fragment>
           );
         })}
-        {(user?.role === 'ORG_ADMIN' || user?.isAdmin) && (
-          <ButtonBase
-            component={RouterLink}
-            to="/org-admin"
-            onClick={() => setMobileOpen(false)}
-            sx={{
-              justifyContent: 'flex-start', width: '100%', mb: 0.5, p: 1.5, borderRadius: '12px',
-              color: location.pathname.startsWith('/org-admin') ? '#6366f1' : (isDark ? 'rgba(255,255,255,0.6)' : 'text.secondary'),
-              bgcolor: location.pathname.startsWith('/org-admin') ? (isDark ? 'rgba(99, 102, 241, 0.1)' : 'rgba(99, 102, 241, 0.05)') : 'transparent',
-              '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)', color: isDark ? 'white' : 'text.primary' },
-              transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: 2
-            }}
-          >
-            <Users size={20} strokeWidth={location.pathname.startsWith('/org-admin') ? 2.5 : 2} />
-            <Box sx={{ fontWeight: location.pathname.startsWith('/org-admin') ? 700 : 500, fontSize: '0.95rem' }}>
-              Org Admin
-            </Box>
-          </ButtonBase>
-        )}
 
+        {/* Admin items */}
+        {(user?.role === 'ORG_ADMIN' || user?.isAdmin) && (
+          <>
+            <Box sx={{ my: 1, mx: expanded ? 1 : 'auto', height: '1px', bgcolor: 'rgba(99,102,241,0.15)', transition: 'all 0.25s' }} />
+            <RailItem to="/org-admin" icon={Shield} label="Org Admin" color="#ec4899" isActive={location.pathname.startsWith('/org-admin')} expanded={expanded} onClick={() => setMobileOpen(false)} />
+          </>
+        )}
         {user?.isAdmin && (
-          <ButtonBase
-            component={RouterLink}
-            to="/admin"
-            onClick={() => setMobileOpen(false)}
-            sx={{
-              justifyContent: 'flex-start', width: '100%', mb: 0.5, p: 1.5, borderRadius: '12px',
-              color: location.pathname.startsWith('/admin') ? '#ec4899' : (isDark ? 'rgba(255,255,255,0.6)' : 'text.secondary'),
-              bgcolor: location.pathname.startsWith('/admin') ? (isDark ? 'rgba(236, 72, 153, 0.1)' : 'rgba(236, 72, 153, 0.05)') : 'transparent',
-              '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)', color: isDark ? 'white' : 'text.primary' },
-              transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: 2
-            }}
-          >
-            <Shield size={20} strokeWidth={location.pathname.startsWith('/admin') ? 2.5 : 2} />
-            <Box sx={{ fontWeight: location.pathname.startsWith('/admin') ? 700 : 500, fontSize: '0.95rem' }}>
-              Super Admin
-            </Box>
-          </ButtonBase>
+          <RailItem to="/admin" icon={Shield} label="Super Admin" color="#f43f5e" isActive={location.pathname.startsWith('/admin')} expanded={expanded} onClick={() => setMobileOpen(false)} />
         )}
       </Box>
 
-      {/* Upgrade Call to Action */}
-      {(!user?.isAdmin && user?.role !== 'ORG_ADMIN') && (
-        <Box sx={{ p: 3, m: 2, borderRadius: '16px', bgcolor: isDark ? 'rgba(99, 102, 241, 0.1)' : 'rgba(99, 102, 241, 0.05)', border: '1px solid', borderColor: isDark ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)' }}>
-          <Box sx={{ fontWeight: 700, fontSize: '0.875rem', color: '#6366f1', mb: 0.5 }}>Upgrade to Pro</Box>
-          <Box sx={{ fontSize: '0.75rem', color: isDark ? 'rgba(255,255,255,0.6)' : 'text.secondary', display: 'block', mb: 2 }}>Unlock AI Tutor & unlimited Vaults.</Box>
-          <ButtonBase component={RouterLink} to="/billing" sx={{ width: '100%', p: 1, borderRadius: '8px', bgcolor: '#6366f1', color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>
-            View Plans
-          </ButtonBase>
+      {/* ── PRO upgrade ── */}
+      {!user?.isAdmin && user?.role !== 'ORG_ADMIN' && (
+        <Box sx={{ p: 1, flexShrink: 0, borderTop: '1px solid', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }}>
+          <Tooltip title={!expanded ? 'Upgrade to Pro' : ''} placement="right" arrow>
+            <Box
+              component={RouterLink} to="/billing"
+              sx={{
+                display: 'flex', alignItems: 'center', gap: expanded ? 1.5 : 0,
+                justifyContent: expanded ? 'flex-start' : 'center',
+                px: expanded ? 1.5 : 0, height: 44, borderRadius: '12px',
+                textDecoration: 'none', overflow: 'hidden',
+                bgcolor: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)',
+                transition: 'all 0.25s',
+                '&:hover': { bgcolor: 'rgba(99,102,241,0.18)', boxShadow: '0 0 16px rgba(99,102,241,0.2)' },
+              }}
+            >
+              <Zap size={16} color="#6366f1" style={{ flexShrink: 0 }} />
+              <AnimatePresence>
+                {expanded && (
+                  <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }}>
+                    <Box sx={{ fontSize: '0.78rem', fontWeight: 800, color: '#818cf8', whiteSpace: 'nowrap' }}>Upgrade to Pro</Box>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Box>
+          </Tooltip>
         </Box>
       )}
     </Box>
   );
 
-  if (mobileOpen) {
-    return content;
-  }
+  if (mobileOpen) return RailContent;
 
   return (
-    <Box sx={{ display: { xs: 'none', md: 'block' }, width: 280, flexShrink: 0, height: 'calc(100vh - 32px)', position: 'sticky', top: 16 }}>
-      {content}
+    <Box sx={{ display: { xs: 'none', md: 'flex' }, height: '100vh', position: 'sticky', top: 0, flexShrink: 0, zIndex: 100, width: railWidth, transition: 'width 0.25s cubic-bezier(.4,0,.2,1)' }}>
+      {RailContent}
     </Box>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { Trash2, Shield, ShieldOff, CheckCircle, XCircle, Pencil, UserPlus, X, Users, Link2, Ban, Check, Activity, BarChart2, MessageSquare, MessageCircle, BookOpen, Sliders, Search, Sun, Moon, Mail, RefreshCw, Cpu, Database, Menu as MenuIcon, LogOut, Flame, Trophy } from 'lucide-react';
+import { Building, Trash2, Shield, ShieldOff, CheckCircle, XCircle, Pencil, UserPlus, X, Users, Link2, Ban, Check, Activity, BarChart2, MessageSquare, MessageCircle, BookOpen, Sliders, Search, Sun, Moon, Mail, RefreshCw, Cpu, Database, Menu as MenuIcon, LogOut, Flame, Trophy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, CartesianGrid } from 'recharts';
 import { useAuth } from '../context/AuthContext';
@@ -101,17 +101,21 @@ export default function AdminPanel() {
   const [openBadgeDialog, setOpenBadgeDialog] = useState(false);
   const [badgeInput, setBadgeInput] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
+  const [globalPendingUsers, setGlobalPendingUsers] = useState([]);
+  const [showOrgModal, setShowOrgModal] = useState(false);
+  const [newOrgForm, setNewOrgForm] = useState({ name: '', domain: '', authorizedAdmins: '' });
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [userRes, connRes, subRes, confRes, dashRes, growthRes, sessRes, healthRes, reportsRes, auditRes, flaggedRes, lbRes, orgsRes] = await Promise.all([
+      const [userRes, connRes, subRes, confRes, dashRes, growthRes, sessRes, healthRes, reportsRes, auditRes, flaggedRes, lbRes, orgsRes, pendingRes] = await Promise.all([
         api.get('/admin/users'), api.get('/admin/connections'), api.get('/admin/subjects'), api.get('/settings').catch(() => ({ data: {} })),
         api.get('/admin/analytics/dashboard').catch(() => ({ data: {} })), api.get('/admin/analytics/growth').catch(() => ({ data: [] })),
         api.get('/admin/analytics/sessions').catch(() => ({ data: [] })), api.get('/admin/health').catch(() => ({ data: {} })),
         api.get('/admin/reports').catch(() => ({ data: [] })), api.get('/admin/audit-logs').catch(() => ({ data: [] })),
         api.get('/admin/content-scan').catch(() => ({ data: [] })), api.get('/admin/gamification/leaderboard').catch(() => ({ data: [] })),
-        api.get('/auth/organizations').catch(() => ({ data: [] }))
+        api.get('/admin/organizations').catch(() => ({ data: [] })),
+        api.get('/admin/pending-users/global').catch(() => ({ data: [] }))
       ]);
       setUsers(userRes.data); setConnections(connRes.data); setSubjects(subRes.data);
       if (confRes.data && Object.keys(confRes.data).length > 0) setSiteConfig(confRes.data);
@@ -121,6 +125,7 @@ export default function AdminPanel() {
       setReports(reportsRes.data); setAuditLogs(auditRes.data); setFlaggedContent(flaggedRes.data);
       setLeaderboard(lbRes.data);
       setOrganizations(orgsRes.data || []);
+      setGlobalPendingUsers(pendingRes.data || []);
     } catch { toast.error('Failed to load dashboard metrics'); }
     finally { setLoading(false); }
   };
@@ -267,10 +272,39 @@ export default function AdminPanel() {
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
   const barData = growthData.map(g => ({ name: (g._id || '').substring(5), total: g.users }));
 
+  const handleCreateOrg = async (e) => {
+    e.preventDefault(); setSaving(true);
+    try {
+      await api.post('/admin/organizations', newOrgForm);
+      toast.success('Walled Garden Built Successfully');
+      setShowOrgModal(false);
+      setNewOrgForm({ name: '', domain: '', authorizedAdmins: '' });
+      fetchData();
+    } catch (err) { toast.error(err.response?.data?.message || 'Matrix anomaly: Organization construction failed'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDeleteOrg = async (id) => {
+    if (!window.confirm('WARNING God-Mode action: Annihilate this Walled Garden and all memory of it completely?')) return;
+    try { await api.delete(`/admin/organizations/${id}`); toast.success('Garden wiped from existence'); fetchData(); }
+    catch (err) { toast.error(err.response?.data?.message || 'Failed to execute deletion'); }
+  };
+
+  const handleGlobalPendingApprove = async (id) => {
+    try { await api.put(`/admin/users/${id}/approve`); toast.success('Student explicitly approved to Walled Garden via God-Mode'); fetchData(); }
+    catch (err) { toast.error(err.response?.data?.message || 'Approval cascade failed'); }
+  };
+
+  const handleGlobalPendingReject = async (id) => {
+    try { await api.put(`/admin/users/${id}/reject`); toast.success('Student application violently rejected'); fetchData(); }
+    catch (err) { toast.error(err.response?.data?.message || 'Rejection failed'); }
+  };
+
   const menuItems = [
     { id: 'dashboard', icon: BarChart2, label: 'Analytics', roles: ['Super Admin', 'Moderator'] },
     { id: 'gamification', icon: Trophy, label: 'Leaderboards', roles: ['Super Admin', 'Moderator'] },
     { id: 'users', icon: Users, label: 'Manage Entities', roles: ['Super Admin', 'Moderator'] },
+    { id: 'institutions', icon: Building, label: 'Walled Gardens', roles: ['Super Admin'] },
     { id: 'feedback', icon: MessageSquare, label: 'Moderation Hub', roles: ['Super Admin', 'Moderator', 'Support Agent'] },
     { id: 'subjects', icon: BookOpen, label: 'Topics', roles: ['Super Admin', 'Moderator'] },
     { id: 'messages', icon: MessageCircle, label: 'Support Chat', roles: ['Super Admin', 'Support Agent'] },
@@ -473,6 +507,7 @@ export default function AdminPanel() {
                   <Tab label="Standard Users" value="regular" />
                   <Tab label="System Administrators" value="admins" />
                   <Tab label="Global Connections" value="connections" />
+                  <Tab label={`Global Approvals (${globalPendingUsers.length})`} value="approvals" />
                 </Tabs>
 
                 {(activeUserTab === 'regular' || activeUserTab === 'admins') && (
@@ -553,6 +588,54 @@ export default function AdminPanel() {
                   </TiltCard>
                 )}
 
+                {activeUserTab === 'approvals' && (
+                  <TiltCard sx={{ borderRadius: '24px' }}>
+                    <Box sx={{ p: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', bgcolor: 'rgba(0,0,0,0.2)' }}>
+                      <Typography variant="h6" fontWeight={800} display="flex" alignItems="center" gap={1.5}>
+                        <Shield size={24} color="#f59e0b" /> 
+                        Pending Identity Claims (Global)
+                      </Typography>
+                    </Box>
+                    <TableContainer>
+                      <Table sx={{ '& .MuiTableCell-root': { borderColor: 'rgba(255,255,255,0.05)', color: 'white' } }}>
+                        <TableHead>
+                          <TableRow sx={{ bgcolor: 'rgba(0,0,0,0.1)' }}>
+                            <TableCell><Typography fontWeight={800} color="rgba(255,255,255,0.5)">Student</Typography></TableCell>
+                            <TableCell><Typography fontWeight={800} color="rgba(255,255,255,0.5)">Target Walled Garden</Typography></TableCell>
+                            <TableCell align="right"><Typography fontWeight={800} color="rgba(255,255,255,0.5)">God-Mode Action</Typography></TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {globalPendingUsers.length === 0 ? (
+                            <TableRow><TableCell colSpan={3} align="center" sx={{ py: 6, color: 'rgba(255,255,255,0.3)' }}><ShieldOff size={48} style={{opacity:0.2, marginBottom:16}}/><br/>No pending claims across the matrix.</TableCell></TableRow>
+                          ) : globalPendingUsers.map(u => (
+                            <TableRow key={u._id} hover sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
+                              <TableCell>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                  <Avatar src={u.avatar} sx={{ bgcolor: '#4f46e5', fontWeight: 900 }}>{u.name[0]}</Avatar>
+                                  <Box>
+                                    <Typography variant="body2" fontWeight={800} color="white">{u.name}</Typography>
+                                    <Typography variant="caption" color="rgba(255,255,255,0.5)" fontWeight={600}>{u.email}</Typography>
+                                  </Box>
+                                </Box>
+                              </TableCell>
+                              <TableCell>
+                                <Chip size="small" icon={<Building size={14} />} label={u.organization?.name || 'Unknown'} sx={{ bgcolor: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa', fontWeight: 800 }} />
+                              </TableCell>
+                              <TableCell align="right">
+                                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                                  <Button size="small" variant="contained" sx={{ bgcolor: '#10b981', color: 'white', fontWeight: 800, borderRadius: '8px' }} startIcon={<CheckCircle size={16}/>} onClick={() => handleGlobalPendingApprove(u._id)}>Approve</Button>
+                                  <Button size="small" variant="outlined" sx={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)', fontWeight: 800, borderRadius: '8px' }} startIcon={<XCircle size={16}/>} onClick={() => handleGlobalPendingReject(u._id)}>Reject</Button>
+                                </Box>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </TiltCard>
+                )}
+
                 {activeUserTab === 'edit-user' && selectedUserId && (
                   <TiltCard>
                     <Box sx={{ p: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -564,6 +647,61 @@ export default function AdminPanel() {
                     </CardContent>
                   </TiltCard>
                 )}
+              </Box>
+            )}
+
+            {/* Walled Gardens Tab */}
+            {activeTab === 'institutions' && role === 'Super Admin' && (
+              <Box component={motion.div} variants={fadeUpSpring}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+                  <Typography variant="h4" fontWeight={900}>Walled Gardens Matrix</Typography>
+                  <Button variant="contained" startIcon={<Building size={18} />} sx={{ bgcolor: '#8b5cf6', color: 'white', borderRadius: '100px', fontWeight: 800, px: 3, py: 1 }} onClick={() => setShowOrgModal(true)}>
+                    Erect New Garden
+                  </Button>
+                </Box>
+                <Grid container spacing={3}>
+                  {organizations.map((org, i) => (
+                    <Grid item xs={12} md={6} lg={4} key={org._id || i}>
+                      <TiltCard sx={{ height: '100%', borderRadius: '24px', position: 'relative', overflow: 'hidden' }}>
+                        <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, #8b5cf6, #3b82f6)' }} />
+                        <Box sx={{ p: 4, display: 'flex', flexDirection: 'column', height: '100%' }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
+                            <Box sx={{ p: 1.5, bgcolor: 'rgba(139, 92, 246, 0.1)', borderRadius: '16px' }}>
+                              <Building size={32} color="#8b5cf6" />
+                            </Box>
+                            <IconButton size="small" onClick={() => handleDeleteOrg(org._id)} sx={{ color: '#ef4444', bgcolor: 'rgba(239, 68, 68, 0.1)' }}>
+                              <Trash2 size={16} />
+                            </IconButton>
+                          </Box>
+                          <Typography variant="h5" fontWeight={900} sx={{ mb: 1 }}>{org.name}</Typography>
+                          <Typography variant="body2" color="#8b5cf6" fontWeight={800} sx={{ mb: 3 }}>@{org.domain}</Typography>
+                          <Grid container spacing={2} sx={{ mt: 'auto' }}>
+                            <Grid item xs={6}>
+                              <Box sx={{ p: 2, bgcolor: 'rgba(0,0,0,0.2)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <Typography variant="caption" color="rgba(255,255,255,0.5)" fontWeight={800}>Total Students</Typography>
+                                <Typography variant="h6" fontWeight={900}>{org.totalStudents || 0}</Typography>
+                              </Box>
+                            </Grid>
+                            <Grid item xs={6}>
+                              <Box sx={{ p: 2, bgcolor: 'rgba(245, 158, 11, 0.1)', borderRadius: '16px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                                <Typography variant="caption" color="#f59e0b" fontWeight={800}>Pending</Typography>
+                                <Typography variant="h6" color="#f59e0b" fontWeight={900}>{org.pendingStudents || 0}</Typography>
+                              </Box>
+                            </Grid>
+                          </Grid>
+                        </Box>
+                      </TiltCard>
+                    </Grid>
+                  ))}
+                  {organizations.length === 0 && (
+                     <Grid item xs={12}>
+                       <Box sx={{ py: 10, textAlign: 'center', bgcolor: 'rgba(0,0,0,0.2)', borderRadius: '24px', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                         <Building size={48} color="rgba(255,255,255,0.1)" style={{marginBottom: 16}} />
+                         <Typography variant="h6" color="rgba(255,255,255,0.5)" fontWeight={800}>No Walled Gardens Constructed</Typography>
+                       </Box>
+                     </Grid>
+                  )}
+                </Grid>
               </Box>
             )}
 
@@ -771,6 +909,25 @@ export default function AdminPanel() {
       </Box>
 
       {/* Broadcast Modal Dialog */}
+      {/* Create Walled Garden Modal */}
+      <Dialog open={showOrgModal} onClose={() => setShowOrgModal(false)} PaperProps={{ sx: { bgcolor: '#0f172a', color: 'white', borderRadius: '24px', minWidth: 400, border: '1px solid rgba(255,255,255,0.1)' } }}>
+        <Box sx={{ p: 3, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6" fontWeight={800} display="flex" alignItems="center" gap={1}><Building size={20} color="#8b5cf6"/> Construct Walled Garden</Typography>
+          <IconButton size="small" onClick={() => setShowOrgModal(false)} sx={{ color: 'white' }}><X size={18}/></IconButton>
+        </Box>
+        <DialogContent sx={{ p: 3 }}>
+          <TextField fullWidth label="Institution Name" variant="outlined" sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.02)', '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } }, input: { color: 'white' }, label: { color: 'rgba(255,255,255,0.5)' } }} value={newOrgForm.name} onChange={e => setNewOrgForm({...newOrgForm, name: e.target.value})} placeholder="e.g. Stanford University" />
+          <TextField fullWidth label="Allowed Email Domain" variant="outlined" sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.02)', '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } }, input: { color: 'white' }, label: { color: 'rgba(255,255,255,0.5)' } }} value={newOrgForm.domain} onChange={e => setNewOrgForm({...newOrgForm, domain: e.target.value})} placeholder="e.g. stanford.edu" />
+          <TextField fullWidth label="Admin Emails (comma-separated)" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.02)', '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } }, input: { color: 'white' }, label: { color: 'rgba(255,255,255,0.5)' } }} value={newOrgForm.authorizedAdmins} onChange={e => setNewOrgForm({...newOrgForm, authorizedAdmins: e.target.value})} placeholder="admin@stanford.edu, it@stanford.edu" />
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 0 }}>
+          <Button onClick={() => setShowOrgModal(false)} sx={{ color: 'rgba(255,255,255,0.5)', fontWeight: 800 }}>Cancel</Button>
+          <Button onClick={handleCreateOrg} variant="contained" sx={{ bgcolor: '#8b5cf6', color: 'white', borderRadius: '12px', fontWeight: 800, px: 3 }} disabled={saving || !newOrgForm.name || !newOrgForm.domain}>
+            {saving ? <Activity size={18} /> : 'Construct Matrix'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
       <Dialog open={showBroadcastModal} onClose={() => setShowBroadcastModal(false)} PaperProps={{ sx: { bgcolor: '#0f172a', color: 'white', borderRadius: '24px', minWidth: 400, border: '1px solid rgba(255,255,255,0.1)' } }}>
         <DialogTitle sx={{ fontWeight: 900, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>Targeted Broadcast</DialogTitle>
         <DialogContent sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>

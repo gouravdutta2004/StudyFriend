@@ -5,6 +5,7 @@ const Report = require('../models/Report');
 const FlaggedItem = require('../models/FlaggedItem');
 const Subject = require('../models/Subject');
 const Session = require('../models/Session');
+const Organization = require('../models/Organization');
 const AuditLog = require('../models/AuditLog');
 const SystemConfig = require('../models/SystemConfig');
 const Settings = require('../models/Settings');
@@ -589,6 +590,104 @@ const getOrgDashboardStats = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
+// ── GLOBAL GOD-MODE CONTROLLERS ── //
+const getGlobalOrganizations = async (req, res) => {
+  try {
+    const orgs = await Organization.find({}).lean();
+    
+    // Attach student metrics to each org via aggregation locally
+    for (let org of orgs) {
+      org.totalStudents = await User.countDocuments({ organization: org._id, verificationStatus: 'APPROVED' });
+      org.pendingStudents = await User.countDocuments({ organization: org._id, verificationStatus: 'PENDING' });
+    }
+    res.json(orgs);
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+const createOrganization = async (req, res) => {
+  try {
+    const { name, domain, authorizedAdmins } = req.body;
+    if (!name || !domain) return res.status(400).json({ message: 'Name and Domain are strictly required.' });
+    
+    const exists = await Organization.findOne({ domain });
+    if (exists) return res.status(400).json({ message: 'Organization domain already registered.' });
+    
+    let parsedAdmins = [];
+    if (authorizedAdmins) {
+      if (typeof authorizedAdmins === 'string') {
+        parsedAdmins = authorizedAdmins.split(',').map(a => a.trim().toLowerCase()).filter(Boolean);
+      } else if (Array.isArray(authorizedAdmins)) {
+        parsedAdmins = authorizedAdmins.map(a => a.toLowerCase().trim());
+      }
+    }
+
+    const org = await Organization.create({ name, domain, authorizedAdmins: parsedAdmins });
+    await AuditLog.create({ adminId: req.user._id, action: 'CREATE_ORG', details: `Created organization ${name} (${domain})` });
+    res.status(201).json(org);
+  } catch (err) { 
+    console.error('ORG CREATION ERROR:', err);
+    res.status(500).json({ message: err.message }); 
+  }
+};
+
+const updateOrganization = async (req, res) => {
+  try {
+    const { name, domain, authorizedAdmins } = req.body;
+    const org = await Organization.findById(req.params.id);
+    if (!org) return res.status(404).json({ message: 'Organization not found' });
+    
+    if (name) org.name = name;
+    if (domain) org.domain = domain;
+    if (authorizedAdmins !== undefined) {
+      let parsedAdmins = [];
+      if (typeof authorizedAdmins === 'string') {
+        parsedAdmins = authorizedAdmins.split(',').map(a => a.trim().toLowerCase()).filter(Boolean);
+      } else if (Array.isArray(authorizedAdmins)) {
+        parsedAdmins = authorizedAdmins.map(a => a.toLowerCase().trim());
+      }
+      org.authorizedAdmins = parsedAdmins;
+    }
+    
+    await org.save();
+    await AuditLog.create({ adminId: req.user._id, action: 'UPDATE_ORG', details: `Updated organization ${org.name}` });
+    res.json(org);
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+const deleteOrganization = async (req, res) => {
+  try {
+    const org = await Organization.findById(req.params.id);
+    if (!org) return res.status(404).json({ message: 'Organization not found' });
+    
+    const usersCount = await User.countDocuments({ organization: org._id });
+    if (usersCount > 50) {
+      return res.status(400).json({ message: `Safety Lock Active: Cannot wipe a heavily-populated Walled Garden (${usersCount} users). Manually expel students first.` });
+    }
+    
+    if (usersCount > 0) {
+      // Automatically sever ties for small test organizations
+      await User.updateMany(
+        { organization: org._id }, 
+        { $set: { organization: null, role: 'USER', verificationStatus: 'PENDING' } }
+      );
+    }
+    
+    await Organization.findByIdAndDelete(req.params.id);
+    await AuditLog.create({ adminId: req.user._id, action: 'DELETE_ORG', details: `Erased organization ${org.name}` });
+    res.json({ message: 'Organization permanently deleted.' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+const getGlobalPendingUsers = async (req, res) => {
+  try {
+    const users = await User.find({ verificationStatus: 'PENDING' })
+      .populate('organization', 'name domain')
+      .select('-password')
+      .lean();
+    res.json(users);
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
 module.exports = { 
   getUsers, updateUser, deleteUser, createUser, 
   getSystemConnections, severSystemConnection, 
@@ -599,5 +698,7 @@ module.exports = {
   getReports, updateReport, scanContent, updateFlaggedItem,
   getGamificationLeaderboard, awardBadge,
   getPendingUsers, approveUser, rejectUser,
-  getOrgUsers, toggleOrgUserStatus, deleteOrgUser, getOrgDashboardStats
+  getOrgUsers, toggleOrgUserStatus, deleteOrgUser, getOrgDashboardStats,
+  getGlobalOrganizations, createOrganization, updateOrganization, deleteOrganization,
+  getGlobalPendingUsers
 };

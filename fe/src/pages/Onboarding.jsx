@@ -72,7 +72,8 @@ export default function Onboarding() {
       toast.success('Onboarding complete!');
       navigate('/dashboard');
     } catch (err) {
-      toast.error('Failed to save profile details');
+      console.error("ONBOARDING ERROR:", err.response?.data || err);
+      toast.error(err.response?.data?.message || err.message || 'Failed to save profile details');
     } finally {
       setLoading(false);
     }

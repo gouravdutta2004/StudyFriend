@@ -54,9 +54,14 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(form.email, form.password);
-      toast.success('Welcome back!');
-      navigate('/dashboard');
+      const data = await login(form.email, form.password);
+      if (data.user?.verificationStatus === 'PENDING') {
+        toast.error('Your account is pending organizational approval.');
+        navigate('/pending');
+      } else {
+        toast.success('Welcome back!');
+        navigate('/dashboard');
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Login failed');
     } finally {
@@ -67,9 +72,14 @@ export default function Login() {
   const handleGoogleSuccess = async (credentialResponse) => {
     setLoading(true);
     try {
-      await googleLogin({ credential: credentialResponse.credential });
-      toast.success('Welcome back!');
-      navigate('/dashboard');
+      const data = await googleLogin({ credential: credentialResponse.credential });
+      if (data.user?.verificationStatus === 'PENDING') {
+        toast.error('Your account is pending organizational approval.');
+        navigate('/pending');
+      } else {
+        toast.success('Welcome back!');
+        navigate('/dashboard');
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Google Auth failed');
     } finally {

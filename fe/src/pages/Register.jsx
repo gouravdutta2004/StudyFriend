@@ -104,7 +104,9 @@ export default function Register() {
     try {
       const payload = {
         name: form.name,
-        email: form.email,
+        email: (joinType === 'institution' && selectedCollege && selectedCollege.domains?.[0])
+          ? `${form.email.trim().replace(/@.*/, '')}@${selectedCollege.domains[0]}`
+          : form.email.trim(),
         password: form.password,
         ...getPayload()
       };
@@ -286,9 +288,18 @@ export default function Register() {
                   
                   <motion.div variants={popIn}>
                     <TextField
-                      margin="dense" required fullWidth id="email" label="Email Address" name="email"
+                      margin="dense" required fullWidth id="email" 
+                      label={(joinType === 'institution' && selectedCollege?.domains?.[0]) ? "University Email Prefix" : "Email Address"} 
+                      name="email"
                       autoComplete="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-                      InputProps={{ startAdornment: <InputAdornment position="start"><Email sx={{ color: 'rgba(255,255,255,0.5)' }} /></InputAdornment> }}
+                      InputProps={{ 
+                        startAdornment: <InputAdornment position="start"><Email sx={{ color: 'rgba(255,255,255,0.5)' }} /></InputAdornment>,
+                        endAdornment: (joinType === 'institution' && selectedCollege?.domains?.[0]) ? (
+                          <InputAdornment position="end">
+                            <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>@{selectedCollege.domains[0]}</Typography>
+                          </InputAdornment>
+                        ) : null
+                      }}
                       sx={{ ...inputStyles, mb: 2 }}
                     />
                   </motion.div>

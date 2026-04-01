@@ -20,6 +20,13 @@ const protect = async (req, res, next) => {
     if (decoded.role === 'admin') {
       req.user.role = 'admin'; // Legacy stamp for SUPER_ADMINs
     }
+    
+    // BACKEND SECURE LOCK: Walled Garden protection
+    // Block PENDING users from accessing the network API, except allowing them to fetch their base profile to know they are pending
+    if (req.user.verificationStatus === 'PENDING' && req.originalUrl !== '/api/auth/me') {
+      return res.status(403).json({ message: 'Account strictly pending organizational approval.' });
+    }
+
     next();
   } catch (err) {
     const message = err.name === 'TokenExpiredError'

@@ -48,13 +48,8 @@ const register = async (req, res) => {
       if (org.authorizedAdmins && org.authorizedAdmins.map(e => e.toLowerCase()).includes(email.toLowerCase())) {
         role = 'ORG_ADMIN';
         verificationStatus = 'APPROVED';
-      } else {
-        // Domain Check (Auto-Approval)
-        const domainParts = email.split('@');
-        if (domainParts.length === 2 && domainParts[1].toLowerCase() === org.domain.toLowerCase()) {
-          verificationStatus = 'APPROVED';
-        }
       }
+      // Strict Walled Garden: All other typical students remain PENDING until explicitly approved by the Org Admin.
     }
 
     const user = await User.create({ 
@@ -75,8 +70,8 @@ const register = async (req, res) => {
         subject: 'Welcome to StudyFriend!',
         message: `Welcome ${user.name}!`,
         html: welcomeHtml
-      });
-    }).catch(err => console.error('Welcome email failed', err));
+      }).catch(err => console.error('Welcome email dispatch suppressed:', err.message));
+    }).catch(err => console.error('Settings query failed', err));
     
     res.status(201).json({ token: generateToken(user._id, role.toLowerCase()), user });
   } catch (err) {
@@ -283,12 +278,8 @@ const googleAuth = async (req, res) => {
         if (org.authorizedAdmins && org.authorizedAdmins.map(e => e.toLowerCase()).includes(email.toLowerCase())) {
           newRole = 'ORG_ADMIN';
           verificationStatus = 'APPROVED';
-        } else {
-          const domainParts = email.split('@');
-          if (domainParts.length === 2 && domainParts[1].toLowerCase() === org.domain.toLowerCase()) {
-            verificationStatus = 'APPROVED';
-          }
         }
+        // Strict Walled Garden: All other typical students remain PENDING until explicitly approved by the Org Admin.
       }
 
       const randomPassword = crypto.randomBytes(20).toString('hex');
@@ -312,8 +303,8 @@ const googleAuth = async (req, res) => {
           subject: 'Welcome to StudyFriend!',
           message: `Welcome ${user.name}!`,
           html: welcomeHtml
-        });
-      }).catch(err => console.error('Welcome email failed', err));
+        }).catch(err => console.error('Welcome email dispatch suppressed:', err.message));
+      }).catch(err => console.error('Settings query failed', err));
     }
 
     if (!user.isActive) return res.status(403).json({ message: 'Account blocked by administrator' });

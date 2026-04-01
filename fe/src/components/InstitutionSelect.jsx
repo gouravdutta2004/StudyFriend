@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Autocomplete, TextField, CircularProgress, Box, Typography, InputAdornment } from '@mui/material';
 import { Search } from 'lucide-react';
 import axios from 'axios';
+import api from '../api/axios';
 
 export default function InstitutionSelect({ value, onChange, sx }) {
   const [open, setOpen] = useState(false);
@@ -21,10 +22,27 @@ export default function InstitutionSelect({ value, onChange, sx }) {
 
     const debounceFn = setTimeout(async () => {
       try {
-        const { data } = await axios.get(`http://universities.hipolabs.com/search?country=India&name=${encodeURIComponent(query)}`);
+        const queryLower = query.toLowerCase();
+        
+        // 1. Fetch from our own custom Walled Gardens
+        const localResponse = await api.get('/auth/organizations').catch(() => ({ data: [] }));
+        let localOrgs = localResponse.data || [];
+        
+        localOrgs = localOrgs
+          .filter(org => org.name.toLowerCase().includes(queryLower) || org.domain.toLowerCase().includes(queryLower))
+          .map(org => ({ name: org.name, domains: [org.domain], isLocal: true }));
+          
+        // 2. Fetch from Hipolabs external registry
+        let externalOrgs = [];
+        try {
+          const { data } = await axios.get(`http://universities.hipolabs.com/search?country=India&name=${encodeURIComponent(query)}`);
+          externalOrgs = data;
+        } catch (err) { console.error('Hipolabs API failed', err); }
+
         if (active) {
-          // Keep only first 20 results to avoid massive lists, and ensure uniqueness
-          const uniqueData = Array.from(new Map(data.map(item => [item.name, item])).values()).slice(0, 20);
+          // Merge and deduplicate by domain name priority
+          const merged = [...localOrgs, ...externalOrgs];
+          const uniqueData = Array.from(new Map(merged.map(item => [item.domains[0], item])).values()).slice(0, 20);
           setOptions(uniqueData);
         }
       } catch (err) {

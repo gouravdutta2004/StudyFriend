@@ -10,7 +10,8 @@ const {
   getReports, updateReport, scanContent, updateFlaggedItem,
   getGamificationLeaderboard, awardBadge,
   getPendingUsers, approveUser, rejectUser,
-  getOrgUsers, toggleOrgUserStatus, deleteOrgUser, getOrgDashboardStats
+  getOrgUsers, toggleOrgUserStatus, deleteOrgUser, getOrgDashboardStats,
+  getGlobalOrganizations, createOrganization, updateOrganization, deleteOrganization, getGlobalPendingUsers
 } = require('../controllers/adminController');
 const { protect, admin, isOrgAdmin } = require('../middleware/auth');
 const authorizeRole = require('../middleware/rbac');
@@ -25,6 +26,14 @@ router.get('/org-stats', protect, isOrgAdmin, getOrgDashboardStats);
 router.get('/org-users', protect, isOrgAdmin, getOrgUsers);
 router.put('/org-users/:id/toggle', protect, isOrgAdmin, toggleOrgUserStatus);
 router.delete('/org-users/:id', protect, isOrgAdmin, deleteOrgUser);
+
+// ── GLOBAL GOD-MODE (SUPER ADMIN) ROUTES ── //
+router.get('/organizations', protect, admin, authorizeRole('Super Admin', 'Moderator'), getGlobalOrganizations);
+router.post('/organizations', protect, admin, authorizeRole('Super Admin'), createOrganization);
+router.put('/organizations/:id', protect, admin, authorizeRole('Super Admin'), updateOrganization);
+router.delete('/organizations/:id', protect, admin, authorizeRole('Super Admin'), deleteOrganization);
+router.get('/pending-users/global', protect, admin, authorizeRole('Super Admin', 'Moderator'), getGlobalPendingUsers);
+
 
 router.get('/users', protect, admin, authorizeRole('Moderator'), getUsers);
 router.post('/users', protect, admin, authorizeRole('Super Admin'), createUser);

@@ -1,16 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  GoogleMap, useJsApiLoader, Marker, InfoWindow, Circle
-} from '@react-google-maps/api';
-import {
-  Box, Typography, Avatar, Button, Chip, Slider, Paper,
-  CircularProgress, useTheme, Tooltip, IconButton, Badge, TextField,
-  InputAdornment
-} from '@mui/material';
-import {
-  MapPin, Users, Navigation, RefreshCw, MessageCircle,
-  UserPlus, Search, Layers, X
-} from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { GoogleMap, useJsApiLoader, Marker, InfoWindow, Circle } from '@react-google-maps/api';
+import { Box, Typography, Avatar, Button, Chip, Slider, Paper, CircularProgress, useTheme, Tooltip, IconButton, TextField, InputAdornment } from '@mui/material';
+import { Radar, Navigation, RefreshCw, Crosshair, RadioReceiver, Search, X, Activity } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
@@ -18,82 +9,46 @@ import { useNavigate } from 'react-router-dom';
 
 const LIBRARIES = ['places'];
 
-const STUDY_STYLE_COLORS = {
-  Visual: '#f59e0b',
-  Auditory: '#10b981',
-  'Reading/Writing': '#3b82f6',
-  Kinesthetic: '#ef4444',
-  Mixed: '#8b5cf6',
-  Pomodoro: '#ec4899',
-  default: '#8b5cf6',
-};
+// Radar UI Colors
+const RADAR_PRIMARY = '#10b981'; // Emerald/Neon Green
+const RADAR_SECONDARY = '#065f46'; // Dark Emerald
+const RADAR_BG = '#020617'; // Deep Space Black
 
-const MAP_STYLES_DARK = [
-  { elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0f172a' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#0f172a' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#64748b' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#334155' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#020617' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#1e40af' }] },
-  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0f2c1a' }] },
-  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
-  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#334155' }] },
-  { featureType: 'administrative.land_parcel', elementType: 'labels.text.fill', stylers: [{ color: '#475569' }] },
+// Radar Specific Map Styles
+const MAP_STYLES_RADAR = [
+  { elementType: 'geometry', stylers: [{ color: '#020617' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ visibility: 'off' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#334155' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#064e3b' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#022c22' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#065f46' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#000000' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#042f2e' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
+  { featureType: 'administrative.country', elementType: 'geometry.stroke', stylers: [{ color: '#10b981' }] },
+  { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#059669' }] },
 ];
 
-// Custom SVG pin factory for Google Maps — uses google.maps.Size/Point objects
-function createGooglePin(color, isMe = false) {
-  const w = isMe ? 48 : 38;
-  const h = Math.round(w * 1.35);
+const STUDY_STYLE_COLORS = { Visual: '#f59e0b', Auditory: '#10b981', 'Reading/Writing': '#3b82f6', Kinesthetic: '#ef4444', Mixed: '#8b5cf6', Pomodoro: '#ec4899', default: RADAR_PRIMARY };
 
-  const pulseRing = isMe
-    ? `<circle cx="${w / 2}" cy="${w / 2}" r="${w / 2 - 2}" fill="none" stroke="${color}" stroke-width="2" opacity="0.4"/>`
-    : '';
-
-  const cx = w / 2;
-  const cy = w / 2;
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-    <defs>
-      <filter id="s"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="${color}" flood-opacity="0.35"/></filter>
-      <radialGradient id="g" cx="35%" cy="30%" r="70%">
-        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
-        <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
-      </radialGradient>
-    </defs>
-    ${pulseRing}
-    <path d="M${cx} 2 C${cx - 14} 2 ${cx - 20} ${cy - 4} ${cx - 20} ${cy}
-             c0 ${cy + 4} ${20} ${h - cy - 2} ${20} ${h - cy - 2}
-             s${20} ${-(h - cy - 2) + (cy + 4)} ${20} ${-(h - cy - 2) + (cy + 4)}
-             C${cx + 20} ${cy - 4} ${cx + 14} 2 ${cx} 2z"
-          fill="${color}" filter="url(#s)"/>
-    <path d="M${cx} 2 C${cx - 14} 2 ${cx - 20} ${cy - 4} ${cx - 20} ${cy}
-             c0 ${cy + 4} ${20} ${h - cy - 2} ${20} ${h - cy - 2}
-             s${20} ${-(h - cy - 2) + (cy + 4)} ${20} ${-(h - cy - 2) + (cy + 4)}
-             C${cx + 20} ${cy - 4} ${cx + 14} 2 ${cx} 2z"
-          fill="url(#g)"/>
-    <circle cx="${cx}" cy="${cy}" r="${isMe ? cx - 8 : cx - 10}" fill="white" opacity="0.9"/>
-    ${isMe ? `<circle cx="${cx}" cy="${cy}" r="${cx - 16}" fill="${color}"/>` : ''}
+function createRadarBlip(color = RADAR_PRIMARY, isMe = false) {
+  const w = isMe ? 40 : 24;
+  const pulse = isMe ? `<circle cx="${w/2}" cy="${w/2}" r="${w/2-2}" fill="none" stroke="${color}" stroke-width="2" opacity="0.6"/>
+    <circle cx="${w/2}" cy="${w/2}" r="${w/2-6}" fill="none" stroke="${color}" stroke-width="1" opacity="0.4"/>` : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${w}" viewBox="0 0 ${w} ${w}">
+    <defs><filter id="g"><feDropShadow dx="0" dy="0" stdDeviation="${isMe ? 6 : 4}" flood-color="${color}" flood-opacity="0.8"/></filter></defs>
+    ${pulse}
+    <circle cx="${w/2}" cy="${w/2}" r="${isMe ? 6 : 4}" fill="${color}" filter="url(#g)"/>
+    <path d="M${w/2 - 2} ${w/2} L${w/2 + 2} ${w/2} M${w/2} ${w/2 - 2} L${w/2} ${w/2 + 2}" stroke="#000" stroke-width="1"/>
   </svg>`;
-
-  return {
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    scaledSize: new window.google.maps.Size(w, h),
-    anchor: new window.google.maps.Point(cx, h),
-  };
+  return { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`, scaledSize: new window.google.maps.Size(w, w), anchor: new window.google.maps.Point(w/2, w/2) };
 }
-
 
 export default function StudyMap() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
-  const isDark = theme.palette.mode === 'dark';
-
+  
   const [myPos, setMyPos] = useState(null);
   const [nearbyUsers, setNearbyUsers] = useState([]);
   const [radius, setRadius] = useState(10); // km
@@ -104,349 +59,186 @@ export default function StudyMap() {
   const [filter, setFilter] = useState('');
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  const { isLoaded, loadError } = useJsApiLoader({ googleMapsApiKey: apiKey, libraries: LIBRARIES });
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: apiKey,
-    libraries: LIBRARIES,
-  });
-
-  const onMapLoad = useCallback((map) => {
-    setMapInstance(map);
-  }, []);
+  const onMapLoad = useCallback((map) => { setMapInstance(map); }, []);
 
   const initLocation = useCallback(() => {
-    setLoading(true);
-    setLocationError(null);
-
-    if (!navigator.geolocation) {
-      setLocationError('Geolocation is not supported by your browser.');
-      setLoading(false);
-      return;
-    }
-
+    setLoading(true); setLocationError(null);
+    if (!navigator.geolocation) { setLocationError('GEOLOCATION_UNSUPPORTED'); setLoading(false); return; }
     navigator.geolocation.getCurrentPosition(
       async ({ coords: { latitude: lat, longitude: lng } }) => {
         setMyPos({ lat, lng });
-        try {
-          await api.put('/users/profile/location', { lat, lng });
-        } catch {/*silent*/}
-        await fetchNearby(lat, lng, radius);
-        setLoading(false);
+        try { await api.put('/users/profile/location', { lat, lng }); } catch {/*silent*/}
+        await fetchNearby(lat, lng, radius); setLoading(false);
       },
-      () => {
-        setLocationError('Location access denied. Please allow location in your browser settings.');
-        setLoading(false);
-      },
+      () => { setLocationError('LOC_ACCESS_DENIED'); setLoading(false); },
       { enableHighAccuracy: true, timeout: 10000 }
     );
-  }, [radius]);
+  }, [radius]); // eslint-disable-line
 
   const fetchNearby = async (lat, lng, km) => {
-    try {
-      const { data } = await api.get(`/users/nearby?lat=${lat}&lng=${lng}&radius=${km * 1000}`);
-      setNearbyUsers(data);
-    } catch {
-      toast.error('Failed to fetch nearby users');
-    }
+    try { const { data } = await api.get(`/users/nearby?lat=${lat}&lng=${lng}&radius=${km * 1000}`); setNearbyUsers(data); }
+    catch { toast.error('RADAR ERROR: targets lost'); }
   };
+  useEffect(() => { initLocation(); }, [initLocation]);
 
-  useEffect(() => { initLocation(); }, []);
+  const handleRadiusChange = async (_, val) => { setRadius(val); if (myPos) await fetchNearby(myPos.lat, myPos.lng, val); };
+  const handleConnect = async (targetId) => { try { await api.post(`/users/connect/${targetId}`); toast.success('PING_SENT'); } catch (e) { toast.error('PING_FAIL'); } };
+  const handleMessage = (targetId) => { navigate('/messages', { state: { openUserId: targetId } }); };
+  const handleCenterOnMe = () => { if (mapInstance && myPos) { mapInstance.panTo(myPos); mapInstance.setZoom(14); } };
 
-  const handleRadiusChange = async (_, val) => {
-    setRadius(val);
-    if (myPos) await fetchNearby(myPos.lat, myPos.lng, val);
-  };
+  const filteredUsers = filter.trim() ? nearbyUsers.filter(u => u.name?.toLowerCase().includes(filter.toLowerCase()) || u.subjects?.some(s => s.toLowerCase().includes(filter.toLowerCase()))) : nearbyUsers;
 
-  const handleConnect = async (targetId) => {
-    try {
-      await api.post(`/users/connect/${targetId}`);
-      toast.success('Connection request sent! 🎉');
-    } catch (e) {
-      toast.error(e?.response?.data?.message || 'Could not send request');
-    }
-  };
+  if (!isLoaded || loading) return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 72px)', gap: 3, bgcolor: '#020617' }}>
+      <Radar size={64} color={RADAR_PRIMARY} className="animate-spin-slow" />
+      <Typography sx={{ fontFamily: 'monospace', fontWeight: 900, color: RADAR_PRIMARY, letterSpacing: 3 }}>
+        {!isLoaded ? 'INITIALIZING RADAR SYSTEM...' : 'ACQUIRING SATELLITE LOCK...'}
+      </Typography>
+    </Box>
+  );
 
-  const handleMessage = (targetId) => {
-    navigate('/messages', { state: { openUserId: targetId } });
-  };
+  if (loadError || !apiKey || apiKey === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 72px)', gap: 3, bgcolor: '#020617', color: 'error.main' }}>
+      <Typography variant="h5" fontWeight={800} fontFamily="monospace">API_KEY_MISSING</Typography>
+    </Box>
+  );
 
-  const handleCenterOnMe = () => {
-    if (mapInstance && myPos) {
-      mapInstance.panTo(myPos);
-      mapInstance.setZoom(14);
-    }
-  };
-
-  const filteredUsers = filter.trim()
-    ? nearbyUsers.filter(u =>
-        u.name?.toLowerCase().includes(filter.toLowerCase()) ||
-        u.subjects?.some(s => s.toLowerCase().includes(filter.toLowerCase()))
-      )
-    : nearbyUsers;
-
-  // ── Loading states ──────────────────────────────────────────────
-  if (!isLoaded || loading) {
-    return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', gap: 3 }}>
-        <CircularProgress size={56} sx={{ color: '#6366f1' }} />
-        <Typography variant="h6" fontWeight={700} color="text.secondary">
-          {!isLoaded ? 'Loading Google Maps…' : 'Locating your study matrix…'}
-        </Typography>
-      </Box>
-    );
-  }
-
-  if (loadError || !apiKey || apiKey === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
-    return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', gap: 3, p: 4, textAlign: 'center' }}>
-        <MapPin size={64} color="#6366f1" />
-        <Typography variant="h5" fontWeight={800}>Google Maps API Key Missing</Typography>
-        <Typography color="text.secondary" maxWidth={500}>
-          Add your key to <code>fe/.env</code>:<br/>
-          <code style={{ background: 'rgba(99,102,241,0.1)', padding: '4px 8px', borderRadius: 6, fontFamily: 'monospace' }}>
-            VITE_GOOGLE_MAPS_API_KEY=AIzaSy...
-          </code>
-          <br/><br/>Then restart the Vite dev server.
-        </Typography>
-        <Button variant="contained" href="https://console.cloud.google.com" target="_blank" sx={{ bgcolor: '#6366f1', borderRadius: 3, fontWeight: 700 }}>
-          Get API Key (Free)
-        </Button>
-      </Box>
-    );
-  }
-
-  if (locationError) {
-    return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', gap: 3, p: 4, textAlign: 'center' }}>
-        <Navigation size={64} color="#ef4444" />
-        <Typography variant="h5" fontWeight={800}>{locationError}</Typography>
-        <Button variant="contained" onClick={initLocation} sx={{ bgcolor: '#6366f1', borderRadius: 3, fontWeight: 700 }}>
-          Try Again
-        </Button>
-      </Box>
-    );
-  }
+  if (locationError) return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 72px)', gap: 3, bgcolor: '#020617', color: RADAR_PRIMARY }}>
+      <Typography variant="h5" fontWeight={800} fontFamily="monospace">{locationError}</Typography>
+      <Button variant="outlined" onClick={initLocation} sx={{ color: RADAR_PRIMARY, borderColor: RADAR_PRIMARY, fontFamily: 'monospace', fontWeight: 900 }}>RETRY LOCK</Button>
+    </Box>
+  );
 
   return (
-    <Box sx={{ position: 'relative', height: 'calc(100vh - 72px)', overflow: 'hidden' }}>
+    <Box sx={{ position: 'relative', height: 'calc(100vh - 72px)', overflow: 'hidden', bgcolor: '#020617' }}>
+      
+      {/* ── Visual Radar Overlay Animations ── */}
+      <style>
+        {`@keyframes sweep { 0% { transform: translate(-50%, -50%) rotate(0deg); } 100% { transform: translate(-50%, -50%) rotate(360deg); } }`}
+      </style>
+      <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '200vw', height: '200vw', pointerEvents: 'none', zIndex: 1, 
+        background: `conic-gradient(from 0deg, transparent 70%, rgba(16, 185, 129, 0.02) 80%, rgba(16, 185, 129, 0.2) 100%)`, animation: 'sweep 8s linear infinite' }} />
+      <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: 2, backgroundImage: 'linear-gradient(rgba(16, 185, 129, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.05) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
 
-      {/* ── Top Control Panel ── */}
-      <Paper elevation={8} sx={{
-        position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
-        zIndex: 10, borderRadius: '20px', p: 2, minWidth: 340, maxWidth: '92vw',
-        bgcolor: isDark ? 'rgba(2,6,23,0.92)' : 'rgba(255,255,255,0.96)',
-        backdropFilter: 'blur(24px)',
-        border: `1px solid ${isDark ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.12)'}`,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-        display: 'flex', flexDirection: 'column', gap: 1.5
+      {/* ── Top HUD Control Panel ── */}
+      <Paper elevation={0} sx={{
+        position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 10, p: 2, minWidth: 380, maxWidth: '92vw',
+        bgcolor: 'rgba(2, 6, 23, 0.8)', backdropFilter: 'blur(10px)', border: `2px solid ${RADAR_PRIMARY}`,
+        clipPath: 'polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px))', // sci-fi corners
+        display: 'flex', flexDirection: 'column', gap: 2
       }}>
-
-        {/* Header */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="h6" fontWeight={900} display="flex" alignItems="center" gap={1}>
-            <MapPin size={22} color="#6366f1" /> Nearby Scholars
+        {/* Header line */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${RADAR_PRIMARY}`, pb: 1 }}>
+          <Typography sx={{ display: 'flex', alignItems: 'center', gap: 1, fontFamily: 'monospace', fontWeight: 900, color: RADAR_PRIMARY, textShadow: `0 0 8px ${RADAR_PRIMARY}` }}>
+            <Radar size={18} /> LOCAL_RADAR_SCAN
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Chip
-              icon={<Users size={14} />}
-              label={`${filteredUsers.length} found`}
-              size="small"
-              sx={{ bgcolor: 'rgba(99,102,241,0.12)', color: '#6366f1', fontWeight: 700 }}
-            />
-            <Tooltip title="Refresh">
-              <IconButton size="small" onClick={() => myPos && fetchNearby(myPos.lat, myPos.lng, radius)}>
-                <RefreshCw size={16} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Centre on me">
-              <IconButton size="small" onClick={handleCenterOnMe} sx={{ color: '#6366f1' }}>
-                <Navigation size={16} />
-              </IconButton>
-            </Tooltip>
+            <Typography sx={{ fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 900, color: '#f59e0b', bgcolor: 'rgba(245, 158, 11, 0.1)', px: 1, py: 0.2, border: '1px solid currentColor' }}>
+              BLIPS: {filteredUsers.length}
+            </Typography>
+            <IconButton size="small" onClick={() => myPos && fetchNearby(myPos.lat, myPos.lng, radius)} sx={{ color: RADAR_PRIMARY, '&:hover':{bgcolor: 'rgba(16,185,129,0.2)'} }}><RefreshCw size={14} /></IconButton>
+            <IconButton size="small" onClick={handleCenterOnMe} sx={{ color: RADAR_PRIMARY, '&:hover':{bgcolor: 'rgba(16,185,129,0.2)'} }}><Navigation size={14} /></IconButton>
           </Box>
         </Box>
 
-        {/* Search filter */}
-        <TextField
-          size="small"
-          placeholder="Filter by name or subject…"
-          value={filter}
-          onChange={e => setFilter(e.target.value)}
-          InputProps={{
-            startAdornment: <InputAdornment position="start"><Search size={16} /></InputAdornment>,
-            endAdornment: filter ? (
-              <InputAdornment position="end">
-                <IconButton size="small" onClick={() => setFilter('')}><X size={14} /></IconButton>
-              </InputAdornment>
-            ) : null,
-          }}
-          sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+        {/* Filter Input */}
+        <TextField size="small" placeholder="SCAN QUERY..." value={filter} onChange={e => setFilter(e.target.value)}
+          InputProps={{ startAdornment: <InputAdornment position="start"><Search size={14} color={RADAR_PRIMARY}/></InputAdornment>, endAdornment: filter ? (<InputAdornment position="end"><IconButton size="small" onClick={() => setFilter('')} sx={{color: RADAR_PRIMARY}}><X size={12}/></IconButton></InputAdornment>) : null }}
+          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0, fontFamily: 'monospace', color: RADAR_PRIMARY, bgcolor: 'rgba(16, 185, 129, 0.05)', '& fieldset': { borderColor: RADAR_SECONDARY }, '&:hover fieldset': { borderColor: RADAR_PRIMARY }, '&.Mui-focused fieldset': { borderColor: '#34d399' } }, '& input::placeholder': { color: RADAR_SECONDARY, opacity: 1 } }}
         />
 
-        {/* Radius slider */}
+        {/* Radius Slider */}
         <Box sx={{ px: 1 }}>
-          <Typography variant="caption" fontWeight={700} color="text.secondary">
-            Radius: <strong>{radius} km</strong>
-          </Typography>
-          <Slider
-            value={radius} min={1} max={50} step={1}
-            onChange={handleRadiusChange}
-            valueLabelDisplay="auto"
-            valueLabelFormat={v => `${v} km`}
-            sx={{ color: '#6366f1', '& .MuiSlider-thumb': { width: 16, height: 16 }, mt: 0.5 }}
+          <Typography sx={{ fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 900, color: RADAR_PRIMARY }}>SCAN_RADIUS: {radius}KM</Typography>
+          <Slider value={radius} min={1} max={50} step={1} onChange={handleRadiusChange}
+            sx={{ color: RADAR_PRIMARY, height: 2, '& .MuiSlider-thumb': { width: 14, height: 14, borderRadius: 0, border: `2px solid ${RADAR_PRIMARY}`, bgcolor: '#020617' }, mt: 1 }}
           />
         </Box>
       </Paper>
 
-      {/* ── Legend (bottom-right) ── */}
-      <Paper elevation={4} sx={{
-        position: 'absolute', bottom: 24, right: 16, zIndex: 10,
-        borderRadius: '16px', p: 2,
-        bgcolor: isDark ? 'rgba(2,6,23,0.92)' : 'rgba(255,255,255,0.95)',
-        backdropFilter: 'blur(12px)',
-        border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}`,
+      {/* ── Legend HUD ── */}
+      <Paper elevation={0} sx={{
+        position: 'absolute', bottom: 24, right: 16, zIndex: 10, p: 2,
+        bgcolor: 'rgba(2, 6, 23, 0.85)', backdropFilter: 'blur(8px)', border: `1px solid ${RADAR_PRIMARY}`, borderLeft: `4px solid ${RADAR_PRIMARY}`,
         minWidth: 150
       }}>
-        <Typography variant="caption" fontWeight={800} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 1 }}>
-          Study Style
-        </Typography>
+        <Typography sx={{ fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 900, color: RADAR_PRIMARY, mb: 1, letterSpacing: 1 }}>[ FREQUENCIES ]</Typography>
         {Object.entries(STUDY_STYLE_COLORS).filter(([k]) => k !== 'default').map(([style, color]) => (
-          <Box key={style} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
-            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: color, flexShrink: 0 }} />
-            <Typography variant="caption" fontWeight={600}>{style}</Typography>
+          <Box key={style} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <Box sx={{ width: 8, height: 8, bgcolor: color, boxShadow: `0 0 6px ${color}` }} />
+            <Typography sx={{ fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' }}>{style}</Typography>
           </Box>
         ))}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#6366f1', flexShrink: 0 }} />
-          <Typography variant="caption" fontWeight={700} color="#6366f1">You</Typography>
-        </Box>
       </Paper>
 
-      {/* ── Google Map ── */}
+      {/* ── Maps ── */}
       {myPos && (
-        <GoogleMap
-          mapContainerStyle={{ width: '100%', height: '100%' }}
-          center={myPos}
-          zoom={13}
-          onLoad={onMapLoad}
-          options={{
-            styles: isDark ? MAP_STYLES_DARK : [],
-            disableDefaultUI: false,
-            zoomControl: true,
-            streetViewControl: false,
-            mapTypeControl: false,
-            fullscreenControl: true,
-            clickableIcons: false,
-          }}
-        >
-          {/* My position marker */}
-          <Marker
-            position={myPos}
-            icon={createGooglePin('#6366f1', true)}
-            title={`${user?.name} (You)`}
-            onClick={() => setSelectedUser('me')}
-            zIndex={1000}
-          />
+        <Box sx={{ width: '100%', height: '100%', position: 'absolute', zIndex: 0 }}>
+          <GoogleMap
+            mapContainerStyle={{ width: '100%', height: '100%' }}
+            center={myPos} zoom={13} onLoad={onMapLoad}
+            options={{ styles: MAP_STYLES_RADAR, disableDefaultUI: true, clickableIcons: false }}
+          >
+            {/* My position marker */}
+            <Marker position={myPos} icon={createRadarBlip(RADAR_PRIMARY, true)} onClick={() => setSelectedUser('me')} zIndex={1000} />
+            <Circle center={myPos} radius={radius * 1000} options={{ fillColor: RADAR_PRIMARY, fillOpacity: 0.03, strokeColor: RADAR_PRIMARY, strokeOpacity: 0.2, strokeWeight: 1 }} />
 
-          {/* Radius circle */}
-          <Circle
-            center={myPos}
-            radius={radius * 1000}
-            options={{
-              fillColor: '#6366f1',
-              fillOpacity: 0.05,
-              strokeColor: '#6366f1',
-              strokeOpacity: 0.4,
-              strokeWeight: 1.5,
-            }}
-          />
+            {/* InfoWindow for Me */}
+            {selectedUser === 'me' && (
+              <InfoWindow position={myPos} onCloseClick={() => setSelectedUser(null)}>
+                <Box sx={{ bgcolor: '#020617', border: `1px solid ${RADAR_PRIMARY}`, p: 1, minWidth: 140, textAlign: 'center' }}>
+                  <Typography sx={{ fontFamily: 'monospace', fontWeight: 900, color: RADAR_PRIMARY }}>[ SELF_NODE ]</Typography>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#94a3b8', mt: 0.5 }}>LAT: {myPos.lat.toFixed(4)}<br/>LNG: {myPos.lng.toFixed(4)}</Typography>
+                </Box>
+              </InfoWindow>
+            )}
 
-          {/* "Me" InfoWindow */}
-          {selectedUser === 'me' && (
-            <InfoWindow position={myPos} onCloseClick={() => setSelectedUser(null)}>
-              <Box sx={{ textAlign: 'center', p: 0.5, minWidth: 140 }}>
-                <Avatar src={user?.avatar} sx={{ width: 44, height: 44, mx: 'auto', mb: 1, bgcolor: '#6366f1', fontWeight: 700 }}>
-                  {user?.name?.[0]}
-                </Avatar>
-                <Typography fontWeight={800} fontSize={14}>{user?.name}</Typography>
-                <Chip label="You" size="small" sx={{ bgcolor: '#6366f1', color: 'white', fontWeight: 700, mt: 0.5 }} />
-              </Box>
-            </InfoWindow>
-          )}
+            {/* Targets */}
+            {filteredUsers.map(u => {
+              const coords = u.geoLocation?.coordinates;
+              if (!coords || coords.length < 2) return null;
+              const pos = { lat: coords[1], lng: coords[0] };
+              const tColor = STUDY_STYLE_COLORS[u.studyStyle] || STUDY_STYLE_COLORS.default;
 
-          {/* Nearby user markers */}
-          {filteredUsers.map(u => {
-            const coords = u.geoLocation?.coordinates;
-            if (!coords || coords.length < 2) return null;
-            const pos = { lat: coords[1], lng: coords[0] };
-            const pinColor = STUDY_STYLE_COLORS[u.studyStyle] || STUDY_STYLE_COLORS.default;
+              return (
+                <React.Fragment key={u._id}>
+                  <Marker position={pos} icon={createRadarBlip(tColor)} onClick={() => setSelectedUser(selectedUser?._id === u._id ? null : u)} />
 
-            return (
-              <React.Fragment key={u._id}>
-                <Marker
-                  position={pos}
-                  icon={createGooglePin(pinColor)}
-                  title={u.name}
-                  onClick={() => setSelectedUser(selectedUser?._id === u._id ? null : u)}
-                />
+                  {/* Target Info Readout */}
+                  {selectedUser?._id === u._id && (
+                    <InfoWindow position={pos} onCloseClick={() => setSelectedUser(null)}>
+                      <Box sx={{ bgcolor: '#020617', border: `1px solid ${tColor}`, p: 1, minWidth: 220 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, borderBottom: `1px dashed ${tColor}`, pb: 0.5, mb: 1 }}>
+                          <Crosshair size={14} color={tColor} />
+                          <Typography sx={{ fontFamily: 'monospace', fontWeight: 900, color: tColor, fontSize: '0.85rem' }}>{u.name?.toUpperCase()}</Typography>
+                        </Box>
+                        
+                        <Typography sx={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#94a3b8', mb: 1 }}>// {u.university || 'UNKNOWN_SEC'}</Typography>
+                        
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
+                          <Typography sx={{ fontFamily: 'monospace', fontSize: '0.65rem', border: `1px solid ${tColor}`, color: tColor, px: 0.5 }}>CLASS: {u.studyStyle?.toUpperCase() || 'MIXED'}</Typography>
+                          <Typography sx={{ fontFamily: 'monospace', fontSize: '0.65rem', border: `1px solid ${tColor}`, color: tColor, px: 0.5 }}>LVL: {u.level || 1}</Typography>
+                        </Box>
 
-                {selectedUser?._id === u._id && (
-                  <InfoWindow position={pos} onCloseClick={() => setSelectedUser(null)}>
-                    <Box sx={{ minWidth: 220, maxWidth: 260, p: 0.5 }}>
-                      {/* Header */}
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
-                        <Avatar src={u.avatar} sx={{ width: 50, height: 50, bgcolor: pinColor, fontWeight: 800, fontSize: 22, flexShrink: 0 }}>
-                          {u.name?.[0]}
-                        </Avatar>
-                        <Box>
-                          <Typography fontWeight={900} fontSize={15} lineHeight={1.2}>{u.name}</Typography>
-                          <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                            {u.university || 'Independent Scholar'}
-                          </Typography>
+                        <Box sx={{ display: 'flex', gap: 0.5, mt: 1 }}>
+                          <Button size="small" variant="contained" onClick={() => handleConnect(u._id)} sx={{ bgcolor: tColor, color: '#000', borderRadius: 0, fontFamily: 'monospace', fontWeight: 900, fontSize: '0.7rem', py: 0, flex: 1, '&:hover': {bgcolor: tColor, opacity: 0.8} }}>
+                            PING
+                          </Button>
+                          <Button size="small" variant="outlined" onClick={() => handleMessage(u._id)} sx={{ borderColor: tColor, color: tColor, borderRadius: 0, fontFamily: 'monospace', fontWeight: 900, fontSize: '0.7rem', py: 0, flex: 1 }}>
+                            COMMS
+                          </Button>
                         </Box>
                       </Box>
-
-                      {/* Stats row */}
-                      <Box sx={{ display: 'flex', gap: 0.75, mb: 1.5, flexWrap: 'wrap' }}>
-                        <Chip label={`⚡ Lvl ${u.level || 1}`} size="small" sx={{ bgcolor: 'rgba(99,102,241,0.1)', color: '#6366f1', fontWeight: 700, fontSize: 11 }} />
-                        <Chip label={u.studyStyle || 'Mixed'} size="small" sx={{ bgcolor: `${pinColor}20`, color: pinColor, fontWeight: 700, fontSize: 11 }} />
-                      </Box>
-
-                      {/* Subjects */}
-                      {u.subjects?.length > 0 && (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
-                          {u.subjects.slice(0, 4).map(s => (
-                            <Chip key={s} label={s} size="small" sx={{ fontSize: 10, fontWeight: 600 }} />
-                          ))}
-                        </Box>
-                      )}
-
-                      {/* CTAs */}
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button
-                          fullWidth size="small" variant="contained"
-                          startIcon={<UserPlus size={13} />}
-                          onClick={() => handleConnect(u._id)}
-                          sx={{ bgcolor: '#6366f1', borderRadius: '10px', fontWeight: 700, fontSize: 12, py: 0.8, '&:hover': { bgcolor: '#4f46e5' } }}
-                        >
-                          Connect
-                        </Button>
-                        <Button
-                          fullWidth size="small" variant="outlined"
-                          startIcon={<MessageCircle size={13} />}
-                          onClick={() => handleMessage(u._id)}
-                          sx={{ borderColor: '#6366f1', color: '#6366f1', borderRadius: '10px', fontWeight: 700, fontSize: 12, py: 0.8 }}
-                        >
-                          Message
-                        </Button>
-                      </Box>
-                    </Box>
-                  </InfoWindow>
-                )}
-              </React.Fragment>
-            );
-          })}
-        </GoogleMap>
+                    </InfoWindow>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </GoogleMap>
+        </Box>
       )}
     </Box>
   );

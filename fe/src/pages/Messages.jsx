@@ -1,56 +1,34 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { Send, MessageCircle, User, ArrowLeft, MoreVertical, Search, CheckCheck, Check, SmilePlus, Paperclip } from 'lucide-react';
+import { Send, MessageSquare, ArrowLeft, Search, CheckCheck, Check, Paperclip, Reply, Trash2, X, Terminal, MoreHorizontal, Activity } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ReactMarkdown from 'react-markdown';
-import { format } from 'date-fns';
+import { format, isToday, isYesterday } from 'date-fns';
 import io from 'socket.io-client';
-import { Box, Typography, Button, IconButton, TextField, Avatar, Grid, useTheme, useMediaQuery, InputAdornment, Tooltip } from '@mui/material';
-import { motion, useMotionValue, useSpring, useTransform, AnimatePresence } from 'framer-motion';
+import { Box, Typography, Button, IconButton, TextField, Avatar, useTheme, useMediaQuery, InputAdornment, Tooltip } from '@mui/material';
+import { motion, AnimatePresence } from 'framer-motion';
 
-// --- Premium Shared Component ---
-function TiltCard({ children, sx, overrideHeight }) {
-  const theme = useTheme();
-  const isDark = theme.palette.mode === 'dark';
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-  const mouseXSpring = useSpring(x);
-  const mouseYSpring = useSpring(y);
-  const rotateX = useTransform(mouseYSpring, [-0.5, 0.5], ["2deg", "-2deg"]);
-  const rotateY = useTransform(mouseXSpring, [-0.5, 0.5], ["-2deg", "2deg"]);
+const QUICK_EMOJIS = ['ACK', 'NACK', 'SYNC', 'PING', '👍', '🔥', '🚀', '⚠️'];
 
-  const handleMouseMove = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-    const xPct = (e.clientX - rect.left) / width - 0.5;
-    const yPct = (e.clientY - rect.top) / height - 0.5;
-    x.set(xPct);
-    y.set(yPct);
-  };
-  const handleMouseLeave = () => { x.set(0); y.set(0); };
+function formatMsgDate(date) {
+  const d = new Date(date);
+  if (isToday(d)) return format(d, 'HH:mm:ss');
+  if (isYesterday(d)) return `T-1 ${format(d, 'HH:mm:ss')}`;
+  return format(d, 'MM/dd HH:mm:ss');
+}
 
-  return (
-    <motion.div
-      style={{ rotateX, rotateY, perspective: 1200, display: 'flex', height: overrideHeight || '100%', width: '100%' }}
-      onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}
-    >
-      <Box sx={{ 
-        width: '100%', 
-        height: '100%',
-        bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.8)', 
-        backdropFilter: 'blur(20px)',
-        border: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)', 
-        borderRadius: '24px',
-        boxShadow: isDark ? '0 10px 40px rgba(0, 0, 0, 0.3)' : '0 10px 40px rgba(0, 0, 0, 0.05)', 
-        overflow: 'hidden', ...sx 
-      }}>
-        {children}
-      </Box>
-    </motion.div>
-  );
+function groupByDate(messages) {
+  const groups = [];
+  let lastDate = null;
+  messages.forEach(msg => {
+    const d = new Date(msg.createdAt);
+    const label = isToday(d) ? 'CURRENT CYCLE' : isYesterday(d) ? 'PREVIOUS CYCLE' : format(d, 'yyyy.MM.dd');
+    if (label !== lastDate) { groups.push({ type: 'date', label }); lastDate = label; }
+    groups.push(msg);
+  });
+  return groups;
 }
 
 export default function Messages() {
@@ -58,8 +36,9 @@ export default function Messages() {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-
+  const location = useLocation();
   const [searchParams] = useSearchParams();
+
   const [inbox, setInbox] = useState([]);
   const [activeUser, setActiveUser] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -67,410 +46,272 @@ export default function Messages() {
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
-  
+  const [replyTo, setReplyTo] = useState(null);
+  const [reactions, setReactions] = useState({});
+  const [onlineUsers, setOnlineUsers] = useState(new Set());
+  const [showEmojiBar, setShowEmojiBar] = useState(false);
+
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
+  const inputRef = useRef(null);
 
-  // Initialize Socket.io Connection
   useEffect(() => {
     const wsUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001';
-    socketRef.current = io(wsUrl);
-    
-    if (user) {
-      socketRef.current.emit('setup', user._id);
-    }
-    
-    // Cleanup on unmount
+    socketRef.current = io(wsUrl, { withCredentials: true });
+    if (user) socketRef.current.emit('setup', user._id);
+    socketRef.current.on('user_online', id => setOnlineUsers(p => new Set([...p, id])));
+    socketRef.current.on('user_offline', id => setOnlineUsers(p => { const s = new Set(p); s.delete(id); return s; }));
     return () => socketRef.current.disconnect();
   }, [user]);
 
-  // Master Socket Event Listener
+  useEffect(() => {
+    if (location.state?.openUserId) { api.get(`/users/${location.state.openUserId}`).then(r => setActiveUser(r.data)).catch(() => {}); }
+    const withId = searchParams.get('with');
+    if (withId) api.get(`/users/${withId}`).then(r => setActiveUser(r.data)).catch(() => {});
+  }, [location.state, searchParams]);
+
   useEffect(() => {
     if (!socketRef.current) return;
-    
-    const handleReceive = (newMessage) => {
-      const isFocused = activeUser && (activeUser._id === newMessage.sender._id || activeUser._id === newMessage.sender);
-      if (isFocused) {
-        setMessages(prev => [...prev, newMessage]);
-        // Refresh Inbox sequence to bump them to top quietly
-        loadInboxQuietly();
+    const handleReceive = (msg) => {
+      if (activeUser && (activeUser._id === msg.sender._id || activeUser._id === msg.sender)) {
+        setMessages(p => [...p, msg]); loadInboxQuietly();
       } else {
-        toast.success(`New Message from ${newMessage.sender.name || 'someone'}`);
+        toast(`[INCOMING PING] ${msg.sender?.name}: ${msg.content?.slice(0, 40)}`, { duration: 3000, style: { fontFamily: 'monospace', background: '#020617', color: '#0ea5e9', border: '1px solid #0ea5e9' } });
         loadInboxQuietly();
       }
     };
-
-    const handleTyping = (data) => {
-      // Only set typing if it's from the person we are currently looking at
-      if (activeUser && activeUser._id === data.senderId) {
-        setIsTyping(true);
-      }
-    };
-
-    const handleStopTyping = (data) => {
-      if (activeUser && activeUser._id === data.senderId) {
-        setIsTyping(false);
-      }
-    };
-
+    const handleTyping = (d) => { if (activeUser?._id === d.senderId) setIsTyping(true); };
+    const handleStop = (d) => { if (activeUser?._id === d.senderId) setIsTyping(false); };
     socketRef.current.on('message_received', handleReceive);
     socketRef.current.on('typing', handleTyping);
-    socketRef.current.on('stop_typing', handleStopTyping);
-
-    return () => {
-      socketRef.current.off('message_received', handleReceive);
-      socketRef.current.off('typing', handleTyping);
-      socketRef.current.off('stop_typing', handleStopTyping);
-    };
+    socketRef.current.on('stop_typing', handleStop);
+    return () => { socketRef.current.off('message_received', handleReceive); socketRef.current.off('typing', handleTyping); socketRef.current.off('stop_typing', handleStop); };
   }, [activeUser]);
 
-  // Initial Data Fetching
-  useEffect(() => {
-    fetchInboxData();
-    const withId = searchParams.get('with');
-    if (withId) {
-      api.get(`/users/${withId}`).then(res => setActiveUser(res.data)).catch(() => {});
-    }
-  }, []);
+  useEffect(() => { fetchInboxData(); }, []);
+  useEffect(() => { if (activeUser) { setIsTyping(false); setReplyTo(null); fetchConversation(activeUser._id); } }, [activeUser]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isTyping]);
 
-  // Fetch Conversation History
-  useEffect(() => {
-    if (activeUser) {
-      setIsTyping(false);
-      fetchConversation(activeUser._id);
-    }
-  }, [activeUser]);
-
-  // Auto-scroller
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, isTyping]);
-
-  const loadInboxQuietly = async () => {
-    try {
-      const res = await api.get('/messages/inbox');
-      setInbox(res.data);
-    } catch (err) {}
-  };
-
-  const fetchInboxData = async () => {
-    try {
-      const res = await api.get('/messages/inbox');
-      setInbox(res.data);
-    } catch (err) {
-      toast.error('Failed to decrypt Inbox Matrix');
-    }
-  };
-
-  const fetchConversation = async (id) => {
-    try {
-      const res = await api.get(`/messages/${id}`);
-      setMessages(res.data);
-    } catch (err) {
-      toast.error('Failed to decrypt conversation history');
-    }
-  };
+  const loadInboxQuietly = async () => { try { const r = await api.get('/messages/inbox'); setInbox(r.data); } catch {} };
+  const fetchInboxData = async () => { try { const r = await api.get('/messages/inbox'); setInbox(r.data); } catch { toast.error('PINGS_UNREACHABLE'); } };
+  const fetchConversation = async (id) => { try { const r = await api.get(`/messages/${id}`); setMessages(r.data); } catch { toast.error('LINK_SEVERED'); } };
 
   const handleTypingEvent = (e) => {
     setNewMsg(e.target.value);
-
-    // Emit Typing
     if (socketRef.current && activeUser) {
       socketRef.current.emit('typing', { senderId: user._id, receiver: activeUser._id });
-      
-      // Clear timeout if user is typing
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      
-      // Stop typing if idle for 2 seconds
-      typingTimeoutRef.current = setTimeout(() => {
-        socketRef.current.emit('stop_typing', { senderId: user._id, receiver: activeUser._id });
-      }, 2000);
+      typingTimeoutRef.current = setTimeout(() => { socketRef.current.emit('stop_typing', { senderId: user._id, receiver: activeUser._id }); }, 2000);
     }
   };
 
   const handleSend = async (e) => {
-    e.preventDefault();
-    if (!newMsg.trim() || !activeUser) return;
-    
-    setSending(true);
-    socketRef.current.emit('stop_typing', { senderId: user._id, receiver: activeUser._id });
-
+    e?.preventDefault(); if (!newMsg.trim() || !activeUser) return;
+    setSending(true); socketRef.current?.emit('stop_typing', { senderId: user._id, receiver: activeUser._id });
     try {
-      const { data } = await api.post('/messages', { receiverId: activeUser._id, content: newMsg.trim() });
-      setMessages(prev => [...prev, data]);
-      if (socketRef.current) socketRef.current.emit('new_message', data);
-      setNewMsg('');
-      loadInboxQuietly(); // bump active to top
-    } catch { 
-      toast.error('Transmission failed.'); 
-    } finally { 
-      setSending(false); 
-    }
+      const content = replyTo ? `> *↩ ${replyTo.content.slice(0, 60)}${replyTo.content.length > 60 ? '…' : ''}*\n\n${newMsg.trim()}` : newMsg.trim();
+      const { data } = await api.post('/messages', { receiverId: activeUser._id, content });
+      setMessages(p => [...p, data]); socketRef.current?.emit('new_message', data);
+      setNewMsg(''); setReplyTo(null); loadInboxQuietly();
+    } catch { toast.error('TRANSMIT_FAIL'); } finally { setSending(false); }
   };
+
+  const handleReact = (msgId, emoji) => setReactions(p => ({ ...p, [msgId]: p[msgId] === emoji ? null : emoji }));
+  const handleClearChat = () => { if (!window.confirm('PURGE LOCAL LOG?')) return; setMessages([]); toast.success('LOG PURGED', { icon: '🗑️' }); };
 
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append('file', file);
-    const toastId = toast.loading('Uploading attachment...');
-
+    const file = e.target.files[0]; if (!file) return;
+    const fd = new FormData(); fd.append('file', file);
+    const tid = toast.loading('UPLOADING_PAYLOAD…');
     try {
-      const { data } = await api.post('/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const { data } = await api.post('/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       const wsUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001';
-      const absUrl = `${wsUrl}${data.url}`;
-      const markdownInjection = file.type.startsWith('image/') ? `![attachment](${absUrl})` : `[Download Attachment](${absUrl})`;
-      setNewMsg(prev => prev ? `${prev}\n${markdownInjection}` : markdownInjection);
-      toast.success('Attached successfully', { id: toastId });
-    } catch(err) {
-      toast.error('Upload failed', { id: toastId });
-    } finally {
-      e.target.value = null;
-    }
+      const url = `${wsUrl}${data.url}`;
+      const md = file.type.startsWith('image/') ? `![img](${url})` : `[ATTACHMENT: ${file.name}](${url})`;
+      setNewMsg(p => p ? `${p}\n${md}` : md); toast.success('PAYLOAD_LOADED', { id: tid });
+    } catch { toast.error('PAYLOAD_REJECTED', { id: tid }); } finally { e.target.value = null; }
   };
 
-  const getOtherUser = (msg) => {
-    if (!msg.sender || !msg.receiver) return null;
-    return msg.sender._id === user?._id ? msg.receiver : msg.sender;
-  };
+  const getOtherUser = (msg) => { if (!msg.sender || !msg.receiver) return null; return msg.sender._id === user?._id ? msg.receiver : msg.sender; };
+  const filteredInbox = inbox.filter(msg => { const other = getOtherUser(msg); if (!other || other.isAdmin) return false; if (searchFilter && !other.name?.toLowerCase().includes(searchFilter.toLowerCase())) return false; return true; });
+  const grouped = groupByDate(messages);
 
-  const filteredInbox = inbox.filter(msg => {
-    const other = getOtherUser(msg);
-    if (!other || other.isAdmin) return false;
-    if (searchFilter && !other.name.toLowerCase().includes(searchFilter.toLowerCase())) return false;
-    return true;
-  });
+  /* ─────────────── PING STYLES ─────────────── */
+  const PING_CYAN = '#0ea5e9';
+  const PING_GREEN = '#10b981';
+  const PING_DARK = '#020617';
+  const PING_LINE = isDark ? 'rgba(14,165,233,0.2)' : 'rgba(14,165,233,0.4)';
+
+  const bubbleMeBg = isDark ? 'rgba(14,165,233,0.1)' : 'rgba(14,165,233,0.05)';
+  const bubbleThemBg = isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)';
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', py: { xs: 2, md: 4 }, px: { xs: 1, md: 2 }, position: 'relative', overflow: 'hidden' }}>
-      {/* Dynamic Ambient Background */}
-      <Box sx={{ position: 'fixed', top: '-10%', left: '-5%', width: 500, height: 500, bgcolor: 'rgba(56, 189, 248, 0.05)', borderRadius: '50%', filter: 'blur(100px)', zIndex: 0, pointerEvents: 'none' }} />
-      <Box sx={{ position: 'fixed', bottom: '-10%', right: '-5%', width: 500, height: 500, bgcolor: 'rgba(99, 102, 241, 0.05)', borderRadius: '50%', filter: 'blur(100px)', zIndex: 0, pointerEvents: 'none' }} />
+    <Box sx={{ height: 'calc(100vh - 32px)', display: 'flex', alignItems: 'center', justifyContent: 'center', px: { xs: 0, md: 2 }, py: { xs: 0, md: 2 }, bgcolor: isDark ? '#000000' : '#f8fafc', backgroundImage: 'radial-gradient(rgba(14,165,233,0.1) 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
+      <Box sx={{ width: '100%', maxWidth: 1280, height: '100%', display: 'flex', borderRadius: { xs: 0, md: '12px' }, overflow: 'hidden', border: '1px solid', borderColor: PING_LINE, boxShadow: `0 0 40px rgba(14,165,233,0.1)`, bgcolor: PING_DARK }}>
 
-      <Box sx={{ width: '100%', maxWidth: 1200, position: 'relative', zIndex: 1, height: '80vh' }}>
-        <TiltCard overrideHeight="80vh">
-          <Grid container sx={{ height: '100%', m: 0 }}>
-            
-            {/* INBOX SIDEBAR */}
-            <Grid item xs={12} md={4} sx={{ height: '100%', borderRight: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)', display: (!activeUser || !isMobile) ? 'flex' : 'none', flexDirection: 'column', bgcolor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)' }}>
-              
-              <Box sx={{ p: 3, borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)' }}>
-                <Typography variant="h5" fontWeight={900} color={isDark ? "white" : "#0f172a"} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <MessageCircle size={24} color="#38bdf8" /> Direct Messages
-                </Typography>
-                <TextField
-                  fullWidth
-                  placeholder="Search connections..."
-                  value={searchFilter}
-                  onChange={(e) => setSearchFilter(e.target.value)}
-                  variant="outlined"
-                  size="small"
-                  InputProps={{
-                    startAdornment: <InputAdornment position="start"><Search size={16} color={isDark ? "#94a3b8" : "#64748b"}/></InputAdornment>,
-                    sx: { bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'white', borderRadius: 3, color: isDark ? 'white' : 'black', '& fieldset': { border: 'none' } }
-                  }}
-                />
+        {/* ══ PING LIST (SIDEBAR) ══ */}
+        <Box sx={{ width: { xs: '100%', md: 320 }, flexShrink: 0, display: (!activeUser || !isMobile) ? 'flex' : 'none', flexDirection: 'column', borderRight: '1px solid', borderColor: PING_LINE, bgcolor: 'rgba(2,6,23,0.5)' }}>
+          <Box sx={{ p: 2, borderBottom: '1px dashed', borderColor: PING_LINE }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+              <Terminal size={18} color={PING_CYAN} />
+              <Typography sx={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1rem', color: PING_CYAN, letterSpacing: 2 }}>PINGS // INBOX</Typography>
+              {filteredInbox.filter(m => !m.read && (m.receiver?._id || m.receiver) === user?._id).length > 0 && (
+                <Box sx={{ ml: 'auto', bgcolor: PING_CYAN, color: '#000', fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 900, px: 1, py: 0.25, borderRadius: '4px' }}>
+                  {filteredInbox.filter(m => !m.read && (m.receiver?._id || m.receiver) === user?._id).length} UNREAD
+                </Box>
+              )}
+            </Box>
+            <TextField fullWidth size="small" placeholder="QUERY LOGS..." value={searchFilter} onChange={e => setSearchFilter(e.target.value)}
+              InputProps={{ startAdornment: <InputAdornment position="start"><Search size={14} color={PING_CYAN} /></InputAdornment>, endAdornment: searchFilter ? <InputAdornment position="end"><IconButton size="small" onClick={() => setSearchFilter('')}><X size={12} color={PING_CYAN} /></IconButton></InputAdornment> : null }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0, fontFamily: 'monospace', fontSize: '0.8rem', color: PING_CYAN, '& fieldset': { borderColor: PING_LINE }, '&:hover fieldset': { borderColor: PING_CYAN }, '&.Mui-focused fieldset': { borderColor: PING_CYAN, borderWidth: 1 } }, '& input::placeholder': { color: 'rgba(14,165,233,0.5)', opacity: 1 } }}
+            />
+          </Box>
+
+          <Box sx={{ flex: 1, overflowY: 'auto', p: 1, '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: PING_LINE } }}>
+            {filteredInbox.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 8, color: 'rgba(14,165,233,0.4)' }}>
+                <Activity size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+                <Typography sx={{ fontFamily: 'monospace', fontWeight: 800 }}>NO SIGNAL DETECTED</Typography>
+              </Box>
+            ) : filteredInbox.map(msg => {
+              const other = getOtherUser(msg); if (!other) return null;
+              const isActive = activeUser?._id === other._id; const isUnread = !msg.read && (msg.receiver?._id || msg.receiver) === user?._id; const isOnline = onlineUsers.has(other._id);
+              return (
+                <Box key={msg._id} onClick={() => setActiveUser(other)}
+                  sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, mb: 0.5, cursor: 'pointer', border: '1px solid', borderColor: isActive ? PING_CYAN : 'transparent', bgcolor: isActive ? 'rgba(14,165,233,0.05)' : 'transparent', transition: 'all 0.1s', '&:hover': { bgcolor: isActive ? undefined : 'rgba(14,165,233,0.02)' } }}>
+                  <Box sx={{ position: 'relative', flexShrink: 0 }}>
+                    <Avatar src={other.avatar} sx={{ width: 36, height: 36, borderRadius: '4px', bgcolor: 'rgba(14,165,233,0.1)', color: PING_CYAN, fontWeight: 900, fontFamily: 'monospace', border: '1px solid', borderColor: PING_LINE }}>{other.name?.[0]}</Avatar>
+                    <Box sx={{ position: 'absolute', bottom: -4, right: -4, width: 8, height: 8, bgcolor: isOnline ? PING_GREEN : 'rgba(255,255,255,0.2)', border: '1px solid #000' }} />
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+                      <Typography sx={{ fontFamily: 'monospace', fontWeight: isUnread ? 900 : 700, fontSize: '0.8rem', color: isUnread ? PING_CYAN : 'text.primary' }} noWrap>{other.name.toUpperCase()}</Typography>
+                      <Typography sx={{ fontFamily: 'monospace', fontSize: '0.65rem', color: 'rgba(14,165,233,0.5)', flexShrink: 0 }}>{msg.createdAt ? formatMsgDate(msg.createdAt) : ''}</Typography>
+                    </Box>
+                    <Typography sx={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: isUnread ? 700 : 500, color: isUnread ? 'white' : 'rgba(14,165,233,0.6)' }} noWrap>{msg.sender?._id === user?._id ? 'TX> ' : 'RX> '}{msg.content?.slice(0, 30)}</Typography>
+                  </Box>
+                  {isUnread && <Box sx={{ width: 6, height: 6, bgcolor: PING_CYAN, flexShrink: 0 }} />}
+                </Box>
+              );
+            })}
+          </Box>
+        </Box>
+
+        {/* ══ TERMINAL (CHAT AREA) ══ */}
+        <Box sx={{ flex: 1, display: (!activeUser && isMobile) ? 'none' : 'flex', flexDirection: 'column', position: 'relative' }}>
+          {activeUser ? (
+            <>
+              {/* Terminal Header */}
+              <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 2, borderBottom: '1px solid', borderColor: PING_LINE, bgcolor: 'rgba(14,165,233,0.03)' }}>
+                {isMobile && <IconButton onClick={() => setActiveUser(null)} size="small" sx={{ color: PING_CYAN }}><ArrowLeft size={16} /></IconButton>}
+                <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Typography sx={{ fontFamily: 'monospace', fontWeight: 900, color: PING_CYAN, fontSize: '0.85rem' }}>LINK_ESTABLISHED // {activeUser.name.toUpperCase()}</Typography>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: '0.7rem', color: onlineUsers.has(activeUser._id) ? PING_GREEN : 'rgba(14,165,233,0.5)', border: `1px solid ${onlineUsers.has(activeUser._id) ? PING_GREEN : 'rgba(14,165,233,0.3)'}`, px: 0.5 }}>{onlineUsers.has(activeUser._id) ? 'ONLINE' : 'OFFLINE'}</Typography>
+                </Box>
+                <Tooltip title="PURGE LOG"><IconButton size="small" onClick={handleClearChat} sx={{ color: 'rgba(239,68,68,0.7)', '&:hover': { color: '#ef4444', bgcolor: 'rgba(239,68,68,0.1)' }, borderRadius: '4px' }}><Trash2 size={15} /></IconButton></Tooltip>
               </Box>
 
-              <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
-                {filteredInbox.length === 0 ? (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', h: '100%', py: 8, color: isDark ? 'rgba(255,255,255,0.4)': 'rgba(0,0,0,0.4)' }}>
-                    <MessageCircle size={48} style={{ opacity: 0.2, marginBottom: 16 }} />
-                    <Typography fontWeight={700}>Inbox Empty</Typography>
-                    <Typography variant="body2" mt={0.5}>Connect with Study Buddies first!</Typography>
-                  </Box>
-                ) : (
-                  filteredInbox.map(msg => {
-                    const other = getOtherUser(msg);
-                    const isActive = activeUser?._id === other._id;
-                    const isUnread = !msg.read && (msg.receiver?._id || msg.receiver) === user?._id;
-                    return (
-                      <Box
-                        key={msg._id}
-                        component={motion.div}
-                        whileHover={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }}
-                        onClick={() => setActiveUser(other)}
-                        sx={{
-                          p: 3, display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer',
-                          borderBottom: isDark ? '1px solid rgba(255,255,255,0.03)' : '1px solid rgba(0,0,0,0.03)',
-                          bgcolor: isActive ? (isDark ? 'rgba(56, 189, 248, 0.1)' : 'rgba(56, 189, 248, 0.05)') : 'transparent',
-                          transition: '0.2s', position: 'relative'
-                        }}
-                      >
-                        <Box sx={{ position: 'relative' }}>
-                          <Avatar src={other.avatar} sx={{ width: 48, height: 48, bgcolor: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8' }}>
-                            {other.name?.charAt(0) || 'U'}
-                          </Avatar>
-                          {isUnread && (
-                            <Box sx={{ position: 'absolute', top: 0, right: 0, width: 14, height: 14, bgcolor: '#38bdf8', borderRadius: '50%', border: '2px solid', borderColor: isDark ? '#1e293b' : 'white', boxShadow: '0 0 10px rgba(56,189,248,0.5)' }} />
-                          )}
+              {/* Feed */}
+              <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 3, display: 'flex', flexDirection: 'column', gap: 0.5, '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: PING_LINE } }}>
+                <AnimatePresence initial={false}>
+                  {grouped.map((item, idx) => {
+                    if (item.type === 'date') {
+                      return (
+                        <Box key={`date-${idx}`} sx={{ display: 'flex', alignItems: 'center', gap: 2, my: 3 }}>
+                          <Box sx={{ flex: 1, height: '1px', borderBottom: '1px dashed', borderColor: PING_LINE }} />
+                          <Typography sx={{ fontFamily: 'monospace', fontWeight: 900, color: 'rgba(14,165,233,0.5)', px: 1, fontSize: '0.7rem' }}>[ {item.label} ]</Typography>
+                          <Box sx={{ flex: 1, height: '1px', borderBottom: '1px dashed', borderColor: PING_LINE }} />
                         </Box>
-                        <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
-                          <Typography variant="subtitle2" fontWeight={800} color={isDark ? "white" : "#0f172a"} noWrap>{other.name}</Typography>
-                          <Typography variant="body2" color={isUnread ? (isDark ? 'white' : 'black') : (isActive ? '#38bdf8' : (isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)"))} fontWeight={isUnread ? 800 : 500} noWrap>
-                            {msg.content}
-                          </Typography>
+                      );
+                    }
+
+                    const msg = item; const isMe = (msg.sender?._id || msg.sender) === user?._id;
+                    const nextMsg = grouped[idx + 1]; const isLastInGroup = !nextMsg || nextMsg.type === 'date' || (nextMsg.sender?._id || nextMsg.sender) !== (msg.sender?._id || msg.sender);
+                    const reaction = reactions[msg._id];
+
+                    return (
+                      <Box key={msg._id} component={motion.div} initial={{ opacity: 0, x: isMe ? 10 : -10 }} animate={{ opacity: 1, x: 0 }} sx={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', mb: isLastInGroup ? 2 : 0.5 }}>
+                        <Box sx={{ maxWidth: '75%', position: 'relative' }} className="msg-wrapper">
+                          
+                          {/* Actions */}
+                          <Box className="msg-actions" sx={{ position: 'absolute', top: -16, [isMe ? 'right' : 'left']: 0, zIndex: 10, display: 'none', alignItems: 'center', gap: 0.5, bgcolor: PING_DARK, border: '1px solid', borderColor: PING_CYAN, px: 1, py: 0.2, boxShadow: '0 4px 12px rgba(0,0,0,0.5)', '.msg-bubble:hover ~ &, &:hover': { display: 'flex' } }}>
+                            <Tooltip title="REPLY"><Box onClick={() => { setReplyTo(msg); inputRef.current?.focus(); }} sx={{ cursor: 'pointer', display: 'flex', color: PING_CYAN, opacity: 0.7, '&:hover': { opacity: 1 } }}><Reply size={12} /></Box></Tooltip>
+                          </Box>
+
+                          <Box className="msg-bubble" sx={{ p: 1.5, border: '1px solid', borderColor: isMe ? PING_CYAN : PING_LINE, borderLeft: isMe ? undefined : `3px solid ${PING_CYAN}`, borderRight: isMe ? `3px solid ${PING_CYAN}` : undefined, bgcolor: isMe ? bubbleMeBg : bubbleThemBg, color: isDark ? 'rgba(255,255,255,0.9)' : '#fff', fontFamily: 'monospace', fontSize: '0.85rem', '& p': { m: 0, mb: '2px', wordBreak: 'break-word' }, '& blockquote': { m: 0, mb: 1, pl: 1, borderLeft: `2px dashed ${PING_CYAN}`, opacity: 0.7, fontSize: '0.75rem' }, '&:hover + .msg-actions, &:hover ~ .msg-actions': { display: 'flex' } }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5, opacity: 0.5 }}>
+                              <Typography sx={{ fontFamily: 'monospace', fontSize: '0.65rem' }}>{isMe ? 'TX' : 'RX'} // {formatMsgDate(msg.createdAt)}</Typography>
+                              {isMe && (msg.read ? <CheckCheck size={10} color={PING_GREEN} /> : <Check size={10} />)}
+                            </Box>
+                            <ReactMarkdown>{msg.content || ''}</ReactMarkdown>
+                          </Box>
+
+                          <AnimatePresence>
+                            {reaction && (
+                              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ position: 'absolute', bottom: -8, [isMe ? 'right' : 'left']: 4, zIndex: 5 }}>
+                                <Box onClick={() => handleReact(msg._id, reaction)} sx={{ bgcolor: PING_DARK, border: '1px solid', borderColor: PING_CYAN, px: 0.5, py: 0.1, fontSize: '0.7rem', fontFamily: 'monospace', cursor: 'pointer', color: PING_CYAN }}>[{reaction}]</Box>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </Box>
                       </Box>
                     );
-                  })
+                  })}
+                </AnimatePresence>
+
+                {isTyping && (
+                  <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
+                    <Box sx={{ p: 1.5, border: '1px solid', borderColor: PING_LINE, borderLeft: `3px solid ${PING_CYAN}`, bgcolor: bubbleThemBg, display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                      <Typography sx={{ fontFamily: 'monospace', fontSize: '0.8rem', color: PING_CYAN, animation: 'pulse 1s infinite' }}>RECEIVING_SIGNAL...</Typography>
+                    </Box>
+                  </Box>
                 )}
+                <div ref={messagesEndRef} />
               </Box>
-            </Grid>
 
-            {/* ACTIVE CHAT AREA */}
-            <Grid item xs={12} md={8} sx={{ height: '100%', display: (!activeUser && isMobile) ? 'none' : 'flex', flexDirection: 'column' }}>
-              
-              {activeUser ? (
-                <>
-                  {/* Chat Header */}
-                  <Box sx={{ p: 2, borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.5)' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      {isMobile && (
-                        <IconButton onClick={() => setActiveUser(null)} sx={{ color: isDark ? 'white' : 'black' }}>
-                          <ArrowLeft size={20} />
-                        </IconButton>
-                      )}
-                      <Avatar src={activeUser.avatar} sx={{ width: 40, height: 40, bgcolor: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8' }}>{activeUser.name.charAt(0)}</Avatar>
-                      <Box>
-                        <Typography variant="subtitle1" fontWeight={900} color={isDark ? "white" : "#0f172a"}>{activeUser.name}</Typography>
-                        <Typography variant="caption" fontWeight={600} color={isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)"}>
-                          {activeUser.university || 'Active Now'}
-                        </Typography>
-                      </Box>
-                    </Box>
-                    <IconButton sx={{ color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }}>
-                      <MoreVertical size={20} />
-                    </IconButton>
+              {/* Reply Banner */}
+              {replyTo && (
+                <Box sx={{ px: 2, py: 1, borderTop: '1px solid', borderColor: PING_LINE, bgcolor: 'rgba(14,165,233,0.05)', display: 'flex', gap: 1.5, alignItems: 'center' }}>
+                  <Reply size={14} color={PING_CYAN} />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontFamily: 'monospace', fontSize: '0.65rem', fontWeight: 900, color: PING_CYAN }}>FWD: PREV_TX</Typography>
+                    <Typography sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'text.secondary' }} noWrap>{replyTo.content}</Typography>
                   </Box>
-
-                  {/* Messages Stream */}
-                  <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <AnimatePresence>
-                      {messages.map((msg, index) => {
-                        const isMe = (msg.sender._id || msg.sender) === user?._id;
-                        const showAvatar = index === messages.length - 1 || (messages[index + 1]?.sender?._id !== msg.sender?._id);
-                        
-                        return (
-                          <Box key={msg._id} component={motion.div} initial={{ opacity: 0, scale: 0.9, y: 15 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 25 }} sx={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', alignItems: 'flex-end', gap: 1 }}>
-                            
-                            {!isMe && showAvatar && (
-                              <Avatar src={activeUser.avatar} sx={{ width: 28, height: 28 }} />
-                            )}
-                            {!isMe && !showAvatar && <Box sx={{ width: 28 }} />}
-
-                            <Box sx={{
-                              maxWidth: '75%',
-                              p: 2,
-                              borderRadius: isMe ? '24px 24px 4px 24px' : '24px 24px 24px 4px',
-                              bgcolor: isMe ? '#6366f1' : (isDark ? 'rgba(255,255,255,0.05)' : 'white'),
-                              color: isMe ? 'white' : (isDark ? 'white' : '#0f172a'),
-                              boxShadow: isMe ? '0 10px 20px rgba(99, 102, 241, 0.2)' : '0 10px 20px rgba(0,0,0,0.02)',
-                              border: isMe ? 'none' : (isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)'),
-                              '& p': { m: 0, mb: 1, fontSize: '0.95rem', fontWeight: 500, lineHeight: 1.5, wordBreak: 'break-word' },
-                              '& p:last-child': { mb: 0 },
-                              '& code': { bgcolor: isMe ? 'rgba(0,0,0,0.2)' : (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.05)'), px: 0.5, py: 0.2, borderRadius: 1, fontFamily: 'monospace', fontSize: '0.85rem' },
-                              '& pre': { p: 1.5, borderRadius: 2, bgcolor: isMe ? 'rgba(0,0,0,0.3)' : (isDark ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.05)'), overflowX: 'auto', '& code': { bgcolor: 'transparent', px: 0 } },
-                              '& ul, & ol': { mt: 0, mb: 1, pl: 2, fontSize: '0.95rem' }
-                            }}>
-                              <ReactMarkdown>{msg.content || ''}</ReactMarkdown>
-                              
-                              <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5, mt: 0.5, opacity: isMe ? 0.9 : 0.5, fontWeight: 700, fontSize: '0.65rem' }}>
-                                {format(new Date(msg.createdAt), 'h:mm a')}
-                                {isMe && (msg.read ? <CheckCheck size={14} color="#38bdf8" /> : <Check size={14} />)}
-                              </Typography>
-                            </Box>
-
-                          </Box>
-                        );
-                      })}
-                    </AnimatePresence>
-                    
-                    {/* Live Typing Indicator Overlay */}
-                    {isTyping && (
-                      <Box component={motion.div} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'flex-end', gap: 1 }}>
-                        <Avatar src={activeUser.avatar} sx={{ width: 28, height: 28 }} />
-                        <Box sx={{ p: 1.5, px: 2, borderRadius: '24px 24px 24px 4px', bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'white', display: 'flex', gap: 1 }}>
-                          <motion.div animate={{ y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 0.8 }} style={{ width: 6, height: 6, backgroundColor: '#8b5cf6', borderRadius: '50%' }} />
-                          <motion.div animate={{ y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.2 }} style={{ width: 6, height: 6, backgroundColor: '#8b5cf6', borderRadius: '50%' }} />
-                          <motion.div animate={{ y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.4 }} style={{ width: 6, height: 6, backgroundColor: '#8b5cf6', borderRadius: '50%' }} />
-                        </Box>
-                      </Box>
-                    )}
-                    <div ref={messagesEndRef} />
-                  </Box>
-
-                  {/* Quick-Emoji Toolbar */}
-                  <Box sx={{ px: 2, py: 1, display: 'flex', gap: 1, borderTop: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)', bgcolor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)' }}>
-                    <IconButton size="small" onClick={() => fileInputRef.current?.click()} sx={{ color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }}>
-                      <Paperclip size={18} />
-                    </IconButton>
-                    <input type="file" hidden ref={fileInputRef} onChange={handleFileUpload} />
-                    {['👍', '🔥', '🚀', '💡', '📚', '😂'].map(emoji => (
-                      <motion.div key={emoji} whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
-                        <Button 
-                          onClick={() => setNewMsg(prev => prev + emoji)}
-                          sx={{ minWidth: 0, p: 0.5, fontSize: '1.2rem', borderRadius: '50%', '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' } }}
-                        >
-                          {emoji}
-                        </Button>
-                      </motion.div>
-                    ))}
-                    <Tooltip title={<Typography variant="caption">Format with **bold**, *italic*, `code`, or - list</Typography>}>
-                      <IconButton size="small" sx={{ ml: 'auto', color: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }}><SmilePlus size={16} /></IconButton>
-                    </Tooltip>
-                  </Box>
-
-                  {/* Input Form */}
-                  <form onSubmit={handleSend} style={{ padding: '16px', paddingTop: '8px', backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)' }}>
-                    <Box sx={{ display: 'flex', gap: 2 }}>
-                      <TextField
-                        fullWidth
-                        placeholder="Transmit message..."
-                        value={newMsg}
-                        onChange={handleTypingEvent}
-                        variant="outlined"
-                        multiline
-                        maxRows={4}
-                        sx={{
-                          '& .MuiInputBase-root': { bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'white', borderRadius: '24px', color: isDark ? 'white' : 'black', px: 3, py: 1.5 },
-                          '& fieldset': { border: 'none' }
-                        }}
-                      />
-                      <IconButton 
-                        type="submit" 
-                        disabled={sending || !newMsg.trim()}
-                        sx={{ 
-                          width: 56, height: 56, bgcolor: '#6366f1', color: 'white', borderRadius: '50%', flexShrink: 0,
-                          '&:hover': { bgcolor: '#4f46e5', transform: 'scale(1.05)' }, transition: '0.2s',
-                          '&.Mui-disabled': { bgcolor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', color: 'rgba(255,255,255,0.3)' }
-                        }}
-                      >
-                        <Send size={20} />
-                      </IconButton>
-                    </Box>
-                  </form>
-                </>
-              ) : (
-                <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)', p: 4 }}>
-                  <MessageCircle size={80} style={{ opacity: 0.2, marginBottom: 24 }} />
-                  <Typography variant="h4" fontWeight={900} color={isDark ? "white" : "#0f172a"}>Your Messages Matrix</Typography>
-                  <Typography variant="body1" fontWeight={500} mt={1} textAlign="center">
-                    Select an active connection from the left sidebar to decrypt a conversation.
-                  </Typography>
+                  <IconButton size="small" onClick={() => setReplyTo(null)} sx={{ color: PING_CYAN }}><X size={14} /></IconButton>
                 </Box>
               )}
 
-            </Grid>
-          </Grid>
-        </TiltCard>
+              {/* Input */}
+              <Box sx={{ p: 2, borderTop: '1px solid', borderColor: PING_LINE, bgcolor: PING_DARK }}>
+                <Box component="form" onSubmit={handleSend} sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+                  <Tooltip title="ATTACH DATA"><IconButton onClick={() => fileInputRef.current?.click()} sx={{ color: PING_CYAN, borderRadius: '4px', border: '1px solid', borderColor: PING_LINE, p: 1.2, '&:hover': { bgcolor: 'rgba(14,165,233,0.1)' } }}><Paperclip size={16} /></IconButton></Tooltip>
+                  <input type="file" hidden ref={fileInputRef} onChange={handleFileUpload} />
+                  <Tooltip title="STATUS FLAGS"><IconButton onClick={() => setShowEmojiBar(v => !v)} sx={{ color: PING_CYAN, borderRadius: '4px', border: '1px solid', borderColor: PING_LINE, p: 1.2, '&:hover': { bgcolor: 'rgba(14,165,233,0.1)' } }}><Activity size={16} /></IconButton></Tooltip>
+                  
+                  <TextField fullWidth inputRef={inputRef} placeholder=">> ENTER TRANSMISSION..." value={newMsg} onChange={handleTypingEvent} multiline maxRows={5} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0, px: 2, py: 1, fontFamily: 'monospace', fontSize: '0.85rem', color: PING_CYAN, bgcolor: 'rgba(14,165,233,0.02)', '& fieldset': { borderColor: PING_LINE }, '&:hover fieldset': { borderColor: PING_CYAN }, '&.Mui-focused fieldset': { borderColor: PING_CYAN, borderWidth: 1 } }, '& textarea': { lineHeight: 1.5 } }} />
+
+                  <IconButton type="submit" disabled={sending || !newMsg.trim()} sx={{ width: 42, height: 42, bgcolor: PING_CYAN, color: '#000', borderRadius: '4px', flexShrink: 0, '&:hover': { bgcolor: '#38bdf8' }, '&.Mui-disabled': { bgcolor: PING_LINE, color: 'text.disabled' } }}>
+                    <Send size={16} />
+                  </IconButton>
+                </Box>
+                {showEmojiBar && (
+                  <Box sx={{ display: 'flex', gap: 0.5, mt: 1, flexWrap: 'wrap' }}>
+                    {QUICK_EMOJIS.map(e => <Button key={e} onClick={() => setNewMsg(p => p + e)} sx={{ minWidth: 0, px: 1, py: 0.2, fontFamily: 'monospace', fontSize: '0.7rem', color: PING_CYAN, border: '1px solid', borderColor: PING_LINE, borderRadius: '4px', '&:hover': { bgcolor: 'rgba(14,165,233,0.1)' } }}>{e}</Button>)}
+                  </Box>
+                )}
+              </Box>
+            </>
+          ) : (
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 4, color: PING_CYAN }}>
+              <Terminal size={48} style={{ opacity: 0.5, marginBottom: 16 }} />
+              <Typography sx={{ fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 900, mb: 1, textShadow: `0 0 10px ${PING_CYAN}` }}>AWAITING PROTOCOL LINK</Typography>
+              <Typography sx={{ fontFamily: 'monospace', fontSize: '0.8rem', opacity: 0.7 }}>SELECT A TERMINAL FROM THE INBOX TO COMMENCE PINGING.</Typography>
+            </Box>
+          )}
+        </Box>
       </Box>
     </Box>
   );
