@@ -198,7 +198,7 @@ export default function UserProfile() {
                      
                      doc.save(`${profile.name.replace(/\s+/g, '_')}_Academic_Resume.pdf`);
                      toast.success('Resume Decrypted & Exported successfully!', { id: toastId });
-                   } catch (err) {
+                   } catch {
                      toast.error('Failed to generate PDF matrix.', { id: toastId });
                    }
                 }}

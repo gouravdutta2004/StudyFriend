@@ -9,6 +9,7 @@ import StudyRoomChat from '../components/StudyRoomChat';
 import { ArrowLeft, Users, Loader2, Maximize, MessageSquare, FileText } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Box, Typography, IconButton, Button } from '@mui/material';
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
 
