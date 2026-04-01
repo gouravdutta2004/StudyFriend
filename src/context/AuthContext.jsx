@@ -10,6 +10,7 @@ const AuthContext = createContext();
 async function tryAutoSubscribePush() {
   try {
     if (
+      !('Notification' in window) ||
       Notification.permission !== 'granted' ||
       !('serviceWorker' in navigator) ||
       !('PushManager' in window)

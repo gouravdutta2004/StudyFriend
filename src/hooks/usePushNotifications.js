@@ -18,7 +18,7 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export function usePushNotifications() {
-  const [permission, setPermission] = useState(Notification.permission);
+  const [permission, setPermission] = useState('Notification' in window ? Notification.permission : 'default');
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -101,7 +101,7 @@ export function usePushNotifications() {
    * if the user has already granted permission + we have a SW installed.
    */
   const autoSubscribeIfPermitted = useCallback(async () => {
-    if (Notification.permission !== 'granted') return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
     try {
