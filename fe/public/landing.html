@@ -54,7 +54,7 @@
     #loader{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:99999;transition:opacity .6s,visibility .6s}
     #loader.out{opacity:0;visibility:hidden}
     .ll{display:flex;align-items:center;gap:12px;font-family:var(--font-d);font-size:1.4rem;font-weight:700;animation:lp 1.5s ease-in-out infinite}
-    .lbox{width:44px;height:44px;background:var(--grad-p);border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;color:#fff}
+    .lbox{width:44px;height:44px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;background:transparent;object-fit:contain}
     @keyframes lp{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.96)}}
     /* CONTAINER */
     .w{max-width:1180px;margin:0 auto;padding:0 1.5rem}
@@ -62,7 +62,7 @@
     nav{position:fixed;top:14px;left:50%;transform:translateX(-50%);width:calc(100% - 2.5rem);max-width:1100px;z-index:1000;background:rgba(15,20,35,0.6);backdrop-filter:blur(24px) saturate(180%);border:1px solid var(--border);border-radius:var(--r-full);padding:.75rem 1.5rem;display:flex;align-items:center;justify-content:space-between;transition:.3s var(--ease)}
     nav.sc{background:rgba(11,15,26,0.92);border-color:rgba(124,58,237,0.15);box-shadow:0 4px 30px rgba(0,0,0,0.3)}
     .brand{display:flex;align-items:center;gap:10px;font-family:var(--font-d);font-size:1.1rem;font-weight:700}
-    .bicon{width:34px;height:34px;background:var(--grad-p);border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
+    .bicon{width:34px;height:34px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;background:transparent;object-fit:contain}
     .nl{display:flex;align-items:center;gap:1.75rem}
     .nl a{font-size:.875rem;font-weight:500;color:var(--text2);transition:.2s;position:relative}
     .nl a::after{content:'';position:absolute;bottom:-4px;left:0;width:0;height:2px;background:var(--purple);border-radius:var(--r-full);transition:.3s}
@@ -270,7 +270,7 @@
 </head>
 <body>
   <!-- Loader -->
-  <div id="loader"><div class="ll"><div class="lbox">S</div><span>StudyFriend</span></div></div>
+  <div id="loader"><div class="ll"><img src="/logo.png" class="lbox" alt="Logo" /><span>StudyFriend</span></div></div>
   <!-- Scroll progress -->
   <div class="sp" id="sp"></div>
   <!-- BG -->
@@ -283,7 +283,7 @@
 
   <!-- NAVBAR -->
   <nav id="nav">
-    <a href="#" class="brand"><div class="bicon">S</div><span>StudyFriend</span></a>
+    <a href="#" class="brand"><img src="/logo.png" class="bicon" alt="Logo" /><span>StudyFriend</span></a>
     <div class="nl">
       <a href="#features">Features</a>
       <a href="#demo">Demo</a>
@@ -594,7 +594,7 @@
   <!-- FOOTER -->
   <footer>
     <div class="w">
-      <div class="fb2"><div class="bicon" style="width:30px;height:30px;font-size:.85rem;border-radius:var(--r-sm)">S</div><span>StudyFriend</span></div>
+      <div class="fb2"><img src="/logo.png" class="bicon" style="width:30px;height:30px" alt="Logo" /><span>StudyFriend</span></div>
       <p class="fc2">© 2026 StudyFriend Inc. · <a href="/login" style="color:var(--purple2)">Log In</a> · <a href="/register" style="color:var(--purple2)">Sign Up</a></p>
     </div>
   </footer>

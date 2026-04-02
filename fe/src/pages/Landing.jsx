@@ -25,13 +25,13 @@ canvas#sf-cv{position:fixed;inset:0;z-index:-1;pointer-events:none}
 #sf-loader{position:fixed;inset:0;background:#0b0f1a;display:flex;align-items:center;justify-content:center;z-index:99999;transition:opacity .6s,visibility .6s}
 #sf-loader.out{opacity:0;visibility:hidden}
 .ll{display:flex;align-items:center;gap:12px;font-family:var(--font-d);font-size:1.4rem;font-weight:700;animation:lp 1.5s ease-in-out infinite}
-.lbox{width:44px;height:44px;background:linear-gradient(135deg,#7c3aed,#5b21b6);border-radius:.75rem;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;color:#fff}
+.lbox{width:44px;height:44px;border-radius:.75rem;display:flex;align-items:center;justify-content:center;background:transparent;object-fit:contain}
 @keyframes lp{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.96)}}
 /* nav */
 .sf-nav{position:fixed;top:14px;left:50%;transform:translateX(-50%);width:calc(100% - 2.5rem);max-width:1100px;z-index:1000;background:rgba(15,20,35,0.6);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.06);border-radius:9999px;padding:.75rem 1.5rem;display:flex;align-items:center;justify-content:space-between;transition:.3s ease}
 .sf-nav.sc{background:rgba(11,15,26,0.92);border-color:rgba(124,58,237,0.15);box-shadow:0 4px 30px rgba(0,0,0,0.3)}
 .sf-brand{display:flex;align-items:center;gap:10px;font-family:var(--font-d);font-size:1.1rem;font-weight:700;text-decoration:none;color:#f0f0f5}
-.sf-bicon{width:34px;height:34px;background:linear-gradient(135deg,#7c3aed,#5b21b6);border-radius:.75rem;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1rem}
+.sf-bicon{width:34px;height:34px;border-radius:.75rem;display:flex;align-items:center;justify-content:center;background:transparent;object-fit:contain}
 .sf-nl{display:flex;align-items:center;gap:1.75rem}
 .sf-nl a{font-size:.875rem;font-weight:500;color:#8b8fa8;text-decoration:none;transition:.2s;position:relative}
 .sf-nl a::after{content:'';position:absolute;bottom:-4px;left:0;width:0;height:2px;background:#7c3aed;border-radius:9999px;transition:.3s}
@@ -216,7 +216,7 @@ function Navbar() {
   return (
     <>
       <nav className={`sf-nav${scrolled?' sc':''}`} id="sf-nav">
-        <a href="#top" className="sf-brand"><div className="sf-bicon">S</div><span>StudyFriend</span></a>
+        <a href="#top" className="sf-brand"><img src="/logo.png" className="sf-bicon" alt="Logo" /><span>StudyFriend</span></a>
         <div className="sf-nl">
           <a href="#features">Features</a>
           <a href="#watch">Demo</a>
@@ -316,7 +316,7 @@ export default function Landing() {
       <style>{css}</style>
 
       {/* Loader */}
-      <div id="sf-loader"><div className="ll"><div className="lbox">S</div><span>StudyFriend</span></div></div>
+      <div id="sf-loader"><div className="ll"><img src="/logo.png" className="lbox" alt="Logo" /><span>StudyFriend</span></div></div>
 
       {/* Scroll progress */}
       <div className="sp-bar" ref={spRef}/>
@@ -361,7 +361,7 @@ export default function Landing() {
       {/* FOOTER */}
       <footer>
         <div className="sf-w">
-          <div className="fb2"><div className="sf-bicon" style={{width:30,height:30,fontSize:'.85rem',borderRadius:'.5rem'}}>S</div><span>StudyFriend</span></div>
+          <div className="fb2"><img src="/logo.png" className="sf-bicon" style={{width:30,height:30}} alt="Logo" /><span>StudyFriend</span></div>
           <p className="fc2">© 2026 StudyFriend Inc. · <a href="/login" style={{color:'#a78bfa'}}>Log In</a> · <a href="/register" style={{color:'#a78bfa'}}>Sign Up</a></p>
         </div>
       </footer>
