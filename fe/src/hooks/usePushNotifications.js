@@ -18,7 +18,7 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export function usePushNotifications() {
-  const [permission, setPermission] = useState('Notification' in window ? Notification.permission : 'default');
+  const [permission, setPermission] = useState(window.Notification ? window.Notification.permission : 'default');
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -31,7 +31,7 @@ export function usePushNotifications() {
     setLoading(true);
     try {
       // 1. Request notification permission from the user
-      const result = await Notification.requestPermission();
+      const result = await window.Notification.requestPermission();
       setPermission(result);
       if (result !== 'granted') {
         toast.error('Notification permission denied. Enable it in browser settings.');
@@ -101,7 +101,7 @@ export function usePushNotifications() {
    * if the user has already granted permission + we have a SW installed.
    */
   const autoSubscribeIfPermitted = useCallback(async () => {
-    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (!window.Notification || window.Notification.permission !== 'granted') return;
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
     try {
