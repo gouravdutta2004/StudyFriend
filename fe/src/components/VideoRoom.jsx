@@ -16,7 +16,10 @@ export default function VideoRoom({ roomId, socket, onTogglePanel, showPanel }) 
   const iceServers = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+      { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+      { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
     ]
   };
 
@@ -29,7 +32,10 @@ export default function VideoRoom({ roomId, socket, onTogglePanel, showPanel }) 
         setStream(currentStream);
         if (localVideoRef.current) localVideoRef.current.srcObject = currentStream;
 
-        const onUserJoined = (socketId) => {
+        // Signal that WE are ready to receive connections securely
+        socket.emit('ready_for_webrtc', { roomId });
+
+        const onUserReady = (socketId) => {
           const peer = createPeer(socketId, socket.id, currentStream);
           peerConnections.current[socketId] = peer;
           setPeers(prev => [...prev, socketId]);
@@ -47,11 +53,11 @@ export default function VideoRoom({ roomId, socket, onTogglePanel, showPanel }) 
           }
         };
 
-        socket.on('user_joined_room', onUserJoined);
+        socket.on('user_ready_for_webrtc', onUserReady);
         socket.on('webrtc_signal', onWebrtcSignal);
 
         return () => {
-          socket.off('user_joined_room', onUserJoined);
+          socket.off('user_ready_for_webrtc', onUserReady);
           socket.off('webrtc_signal', onWebrtcSignal);
         };
       })

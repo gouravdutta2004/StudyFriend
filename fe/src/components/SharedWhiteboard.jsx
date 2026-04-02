@@ -9,11 +9,17 @@ export default function SharedWhiteboard({ roomId, socket }) {
   useEffect(() => {
     if (!socket) return;
     
-    const handleUpdate = (data) => {
+    const handleUpdate = (payload) => {
       if (!store) return;
       isUpdatingRef.current = true;
       try {
-        store.mergeRemoteChanges(() => store.put(data));
+        const elements = Array.isArray(payload) ? payload : payload.elements;
+        const removedIds = !Array.isArray(payload) && payload.removed ? payload.removed : [];
+        
+        store.mergeRemoteChanges(() => {
+          if (elements && elements.length > 0) store.put(elements);
+          if (removedIds && removedIds.length > 0) store.remove(removedIds);
+        });
       } catch (err) {
         console.error("TLDraw merge diff error", err);
       } finally {
@@ -33,8 +39,10 @@ export default function SharedWhiteboard({ roomId, socket }) {
       if (isUpdatingRef.current) return;
       const changes = { ...update.changes.added, ...update.changes.updated };
       const records = Object.values(changes);
-      if (records.length > 0) {
-        socket.emit('whiteboard_update', { roomId, elements: records });
+      const removedIds = Object.keys(update.changes.removed);
+      
+      if (records.length > 0 || removedIds.length > 0) {
+        socket.emit('whiteboard_update', { roomId, elements: records, removed: removedIds });
       }
     }, { source: 'user', scope: 'document' });
     return () => unsub();
