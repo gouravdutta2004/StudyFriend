@@ -10,6 +10,7 @@ import Messages from './Messages';
 import GlobalAnnouncementBanner from '../components/GlobalAnnouncementBanner';
 import UserQuickPeek from '../components/UserQuickPeek';
 import GlobalActivityFeed from '../components/dashboard/GlobalActivityFeed';
+import InstitutionSelect from '../components/InstitutionSelect';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Box, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton, ListItem, ListItemButton, ListItemIcon, ListItemText, 
@@ -1302,15 +1303,76 @@ export default function AdminPanel() {
 
       {/* Broadcast Modal Dialog */}
       {/* Create Walled Garden Modal */}
-      <Dialog open={showOrgModal} onClose={() => setShowOrgModal(false)} PaperProps={{ sx: { bgcolor: '#0f172a', color: 'white', borderRadius: '24px', minWidth: 400, border: '1px solid rgba(255,255,255,0.1)' } }}>
+      <Dialog open={showOrgModal} onClose={() => setShowOrgModal(false)} PaperProps={{ sx: { bgcolor: '#0f172a', color: 'white', borderRadius: '24px', minWidth: 460, maxWidth: 560, border: '1px solid rgba(255,255,255,0.1)' } }}>
         <Box sx={{ p: 3, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" fontWeight={800} display="flex" alignItems="center" gap={1}><Building size={20} color="#8b5cf6"/> Construct Walled Garden</Typography>
           <IconButton size="small" onClick={() => setShowOrgModal(false)} sx={{ color: 'white' }}><X size={18}/></IconButton>
         </Box>
         <DialogContent sx={{ p: 3 }}>
-          <TextField fullWidth label="Institution Name" variant="outlined" sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.02)', '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } }, input: { color: 'white' }, label: { color: 'rgba(255,255,255,0.5)' } }} value={newOrgForm.name} onChange={e => setNewOrgForm({...newOrgForm, name: e.target.value})} placeholder="e.g. Stanford University" />
-          <TextField fullWidth label="Allowed Email Domain" variant="outlined" sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.02)', '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } }, input: { color: 'white' }, label: { color: 'rgba(255,255,255,0.5)' } }} value={newOrgForm.domain} onChange={e => setNewOrgForm({...newOrgForm, domain: e.target.value})} placeholder="e.g. stanford.edu" />
-          <TextField fullWidth label="Admin Emails (comma-separated)" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.02)', '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } }, input: { color: 'white' }, label: { color: 'rgba(255,255,255,0.5)' } }} value={newOrgForm.authorizedAdmins} onChange={e => setNewOrgForm({...newOrgForm, authorizedAdmins: e.target.value})} placeholder="admin@stanford.edu, it@stanford.edu" />
+
+          {/* University Lookup — auto-fills name & domain from HipoLabs proxy */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', display: 'block', mb: 1 }}>
+              🔍 Auto-fill from Indian University Registry
+            </Typography>
+            <InstitutionSelect
+              value={newOrgForm.name ? { name: newOrgForm.name, domains: [newOrgForm.domain] } : null}
+              onChange={(uni) => {
+                if (uni) {
+                  setNewOrgForm(prev => ({
+                    ...prev,
+                    name: uni.name || prev.name,
+                    domain: uni.domains?.[0] || prev.domain,
+                  }));
+                }
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '12px',
+                  bgcolor: 'rgba(255,255,255,0.02)',
+                  color: 'white',
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                  '&:hover fieldset': { borderColor: 'rgba(139,92,246,0.5)' },
+                  '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+                },
+                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' },
+                '& .MuiInputLabel-root.Mui-focused': { color: '#8b5cf6' },
+              }}
+            />
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', mt: 0.75, display: 'block' }}>
+              Select a university to auto-fill the fields below, or fill them in manually.
+            </Typography>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2.5 }}>
+            <Box sx={{ flex: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.06)' }} />
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.2)', fontWeight: 600, whiteSpace: 'nowrap' }}>OR FILL MANUALLY</Typography>
+            <Box sx={{ flex: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.06)' }} />
+          </Box>
+
+          <TextField
+            fullWidth label="Institution Name" variant="outlined"
+            sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.02)', '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }, '&:hover fieldset': { borderColor: 'rgba(139,92,246,0.4)' } }, input: { color: 'white' }, label: { color: 'rgba(255,255,255,0.5)' } }}
+            value={newOrgForm.name}
+            onChange={e => setNewOrgForm({...newOrgForm, name: e.target.value})}
+            placeholder="e.g. Indian Institute of Technology Delhi"
+          />
+          <TextField
+            fullWidth label="Allowed Email Domain" variant="outlined"
+            sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.02)', '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }, '&:hover fieldset': { borderColor: 'rgba(139,92,246,0.4)' } }, input: { color: 'white' }, label: { color: 'rgba(255,255,255,0.5)' } }}
+            value={newOrgForm.domain}
+            onChange={e => setNewOrgForm({...newOrgForm, domain: e.target.value})}
+            placeholder="e.g. iitd.ac.in"
+            helperText="Only users with this email domain will be allowed to join."
+            FormHelperTextProps={{ sx: { color: 'rgba(255,255,255,0.3)' } }}
+          />
+          <TextField
+            fullWidth label="Admin Emails (comma-separated)" variant="outlined"
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.02)', '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } }, input: { color: 'white' }, label: { color: 'rgba(255,255,255,0.5)' } }}
+            value={newOrgForm.authorizedAdmins}
+            onChange={e => setNewOrgForm({...newOrgForm, authorizedAdmins: e.target.value})}
+            placeholder="admin@iitd.ac.in, it@iitd.ac.in"
+          />
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 0 }}>
           <Button onClick={() => setShowOrgModal(false)} sx={{ color: 'rgba(255,255,255,0.5)', fontWeight: 800 }}>Cancel</Button>
