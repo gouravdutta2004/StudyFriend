@@ -4,7 +4,7 @@ import { useTheme as useCustomTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, User, Menu as MenuIcon, Sun, Moon, Bell, BellRing, BellOff, Sparkles, ChevronDown, MessageCircle, LifeBuoy } from 'lucide-react';
 import api from '../api/axios';
-import { Avatar, Box, Menu, MenuItem, Tooltip, useTheme, useMediaQuery, Badge, Typography, IconButton } from '@mui/material';
+import { Avatar, Box, Menu, MenuItem, Tooltip, useTheme, useMediaQuery, Badge, Typography, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Select, TextField, Button, FormControl, InputLabel } from '@mui/material';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -113,7 +113,27 @@ export default function Navbar({ onMenuClick }) {
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
-  const handleLogout = () => { logout(); navigate('/login'); };
+
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackType, setFeedbackType] = useState('Feature Request');
+  const [feedbackContent, setFeedbackContent] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+
+  const triggerLogoutSequence = () => { 
+    setAnchorElUser(null);
+    setShowFeedbackModal(true); 
+  };
+  
+  const finishLogout = () => { logout(); navigate('/login'); };
+  
+  const submitFeedbackAndLogout = async () => {
+    if (!feedbackContent.trim()) return finishLogout();
+    setFeedbackSubmitting(true);
+    try {
+      await api.post('/users/feedback', { type: feedbackType, content: feedbackContent });
+    } catch (err) { console.error('Feedback submission failed', err); }
+    finishLogout();
+  };
 
   /* ── Icon button style (theme-aware) ── */
   const iconBtnSx = {
@@ -412,12 +432,80 @@ export default function Navbar({ onMenuClick }) {
             sx={{ px: 2.5, py: 1.5, gap: 1.5, color: isDark ? 'rgba(255,255,255,0.75)' : 'text.primary', fontSize: '0.82rem', fontWeight: 600, '&:hover': { bgcolor: 'rgba(99,102,241,0.08)', color: '#818cf8' } }}>
             <User size={15} style={{ opacity: 0.7 }} /> Profile
           </MenuItem>
-          <MenuItem onClick={handleLogout}
+          <MenuItem onClick={triggerLogoutSequence}
             sx={{ px: 2.5, py: 1.5, gap: 1.5, color: '#ef4444', fontSize: '0.82rem', fontWeight: 600, '&:hover': { bgcolor: 'rgba(239,68,68,0.08)' } }}>
             <LogOut size={15} style={{ opacity: 0.7 }} /> Logout
           </MenuItem>
         </Menu>
       </Box>
+
+      {/* Logout Feedback Interceptor Modal */}
+      <Dialog 
+        open={showFeedbackModal} 
+        onClose={finishLogout}
+        maxWidth="sm" fullWidth
+        PaperProps={{ 
+          sx: { 
+            borderRadius: '24px', 
+            bgcolor: isDark ? '#040612' : '#ffffff',
+            backgroundImage: isDark ? 'linear-gradient(to bottom right, rgba(99,102,241,0.05), transparent)' : 'none',
+            border: '1px solid', borderColor: isDark ? 'rgba(99,102,241,0.2)' : 'rgba(0,0,0,0.1)'
+          } 
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1, color: isDark ? 'white' : 'black', fontWeight: 800 }}>
+          <MessageCircle size={22} color="#6366f1" /> Before you go...
+        </DialogTitle>
+        <DialogContent sx={{ pb: 3 }}>
+          <Typography variant="body2" sx={{ color: isDark ? 'rgba(255,255,255,0.7)' : 'text.secondary', mb: 3 }}>
+            Help us improve StudyFriend! Do you have any quick feedback or bug reports?
+          </Typography>
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel sx={{ color: isDark ? 'rgba(255,255,255,0.5)' : undefined }}>Topic</InputLabel>
+            <Select
+              value={feedbackType} onChange={e => setFeedbackType(e.target.value)}
+              label="Topic"
+              sx={{ 
+                color: isDark ? 'white' : 'black', 
+                '.MuiOutlinedInput-notchedOutline': { borderColor: isDark ? 'rgba(255,255,255,0.2)' : undefined },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: isDark ? 'rgba(255,255,255,0.3)' : undefined },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#6366f1' }
+              }}
+            >
+              <MenuItem value="Feature Request">💡 Feature Request</MenuItem>
+              <MenuItem value="Bug">🐛 Bug Report</MenuItem>
+              <MenuItem value="Report User">🛡️ Report a User</MenuItem>
+              <MenuItem value="Other">💬 Other Feedback</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            multiline rows={3} fullWidth
+            placeholder="Tell us about your experience..."
+            value={feedbackContent} onChange={e => setFeedbackContent(e.target.value)}
+            InputProps={{
+              sx: { 
+                color: isDark ? 'white' : 'black', 
+                '& fieldset': { borderColor: isDark ? 'rgba(255,255,255,0.2)' : undefined },
+                '&:hover fieldset': { borderColor: isDark ? 'rgba(255,255,255,0.3)' : undefined },
+                '&.Mui-focused fieldset': { borderColor: '#6366f1' }
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, pt: 0 }}>
+          <Button onClick={finishLogout} sx={{ color: isDark ? 'rgba(255,255,255,0.5)' : 'text.secondary', fontWeight: 600 }}>
+            Skip & Logout
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={submitFeedbackAndLogout} 
+            disabled={feedbackSubmitting || !feedbackContent.trim()}
+            sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, borderRadius: '12px', fontWeight: 700, px: 3, boxShadow: '0 4px 14px rgba(79, 70, 229, 0.4)' }}
+          >
+            {feedbackSubmitting ? 'Sending...' : 'Submit & Logout'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
