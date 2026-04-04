@@ -81,6 +81,9 @@ const userSchema = new mongoose.Schema({
   // ── Trust & Safety ────────────────────────────────────────────────────────
   trustStrikes:  { type: Number, default: 0 },      // auto-incremented on each report
   isShadowBanned: { type: Boolean, default: false }, // auto-set when strikes >= 3
+  // ── Gamification — Trophy Room ────────────────────────────────────────────
+  quizzesPassed: { type: Number, default: 0 },
+  skillMastery:  { type: Map, of: Number, default: {} }, // e.g. { "Physics": 85, "React": 40 }
 }, { timestamps: true });
 
 

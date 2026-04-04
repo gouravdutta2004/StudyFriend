@@ -55,6 +55,8 @@ import SupportWidget from './components/SupportWidget';
 import CommandPalette from './components/CommandPalette';
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { LevelUpProvider } from './components/LevelUpOverlay';
+
 
 class GlobalErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -170,6 +172,7 @@ export default function App() {
     <GoogleOAuthProvider clientId={clientId}>
       <GlobalErrorBoundary>
       <ThemeProvider>
+      <LevelUpProvider>
       <AuthProvider>
         <SocketProvider>
           <BrowserRouter>
@@ -285,6 +288,7 @@ export default function App() {
           </BrowserRouter>
         </SocketProvider>
       </AuthProvider>
+      </LevelUpProvider>
     </ThemeProvider>
     </GlobalErrorBoundary>
     </GoogleOAuthProvider>

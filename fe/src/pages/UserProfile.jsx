@@ -7,13 +7,14 @@ import {
   Pencil, UserMinus, Trophy, Flame, Clock, Star, Github, Linkedin,
   Instagram, BadgeCheck, Globe, Target, Zap, Shield, Award,
   TrendingUp, Brain, Heart, Users, ChevronRight, Download,
-  Twitter, Youtube, Facebook, ExternalLink
+  Twitter, Youtube, Facebook, ExternalLink, CheckCircle, BookMarked, Focus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ActivityHeatmap from '../components/profile/ActivityHeatmap';
 import MindMapModal from '../components/profile/MindMapModal';
 import { Container, Box, Avatar, Typography, Button, Chip, Grid, LinearProgress, useTheme, IconButton, Tooltip } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 
 /* ══════ SKELETON ══════ */
 const pulse = {
@@ -496,19 +497,23 @@ export default function UserProfile() {
   const [connecting, setConnecting] = useState(false);
   const [ratings, setRatings] = useState({ average: 0, count: 0 });
   const [endorsements, setEndorsements] = useState([]);
+  const [activityLog, setActivityLog] = useState([]);
   const [mapOpen, setMapOpen] = useState(false);
   const [sharedHours, setSharedHours] = useState(0);
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
 
+  // Fetch profile, ratings, endorsements + gamification data
   useEffect(() => {
     if (!targetId) return;
     Promise.all([
       api.get(`/users/${targetId}`),
       api.get(`/ratings/${targetId}`),
       api.get(`/gamification/endorsements/${targetId}`),
-    ]).then(([p, r, e]) => {
+      api.get(`/study/activity-log/${targetId}`).catch(() => ({ data: [] })),
+    ]).then(([p, r, e, al]) => {
       setProfile(p.data); setRatings(r.data); setEndorsements(e.data);
+      setActivityLog(al.data || []);
     }).catch(() => toast.error('User not found'))
       .finally(() => setLoading(false));
   }, [targetId]);
@@ -600,6 +605,25 @@ export default function UserProfile() {
                   <Typography sx={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 900, fontSize: { xs: '1.6rem', md: '2rem' }, color: isDark ? 'white' : '#0f172a', lineHeight: 1, letterSpacing: -1 }}>
                     {profile.name}
                   </Typography>
+                  {/* ── Level Hex Badge ── */}
+                  {(() => {
+                    const lvl = profile.level || 1;
+                    const lvlColor = lvl >= 16 ? '#f59e0b' : lvl >= 11 ? '#8b5cf6' : lvl >= 6 ? '#3b82f6' : '#10b981';
+                    return (
+                      <Tooltip title={`Level ${lvl} Scholar`} arrow>
+                        <Box component={motion.div} whileHover={{ scale: 1.1 }} sx={{ position: 'relative', width: 48, height: 54, flexShrink: 0, cursor: 'default' }}>
+                          <svg viewBox="0 0 100 115" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+                            <polygon points="50,5 95,27.5 95,87.5 50,110 5,87.5 5,27.5" fill={`${lvlColor}22`} stroke={lvlColor} strokeWidth="3" />
+                            <polygon points="50,14 86,33.5 86,82.5 50,102 14,82.5 14,33.5" fill="none" stroke={`${lvlColor}55`} strokeWidth="1" />
+                          </svg>
+                          <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                            <Typography sx={{ fontFamily: 'monospace', fontSize: '0.38rem', fontWeight: 900, color: lvlColor, letterSpacing: 1.5, lineHeight: 1 }}>LVL</Typography>
+                            <Typography sx={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 900, color: 'white', lineHeight: 1 }}>{lvl}</Typography>
+                          </Box>
+                        </Box>
+                      </Tooltip>
+                    );
+                  })()}
                   {profile.isVerified && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.3, borderRadius: '7px', bgcolor: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)' }}>
                       <BadgeCheck size={13} color="#3b82f6" />
@@ -690,11 +714,93 @@ export default function UserProfile() {
           </Box>
         </Box>
 
+        {/* ── XP Progress Bar ── */}
+        {(() => {
+          const LEVEL_CURVE = [0,1000,2500,4500,7000,10000,14000,19000,25000,32500,42000,54000,68000,85000,105000,130000,160000,195000,235000,280000];
+          const lvl = profile.level || 1;
+          const xp  = profile.xp || 0;
+          const lvlFloor = LEVEL_CURVE[lvl - 1] || 0;
+          const lvlCeil  = LEVEL_CURVE[Math.min(lvl, 19)] || LEVEL_CURVE[19];
+          const pct = lvl >= 20 ? 100 : Math.min(Math.round(((xp - lvlFloor) / (lvlCeil - lvlFloor)) * 100), 100);
+          const lvlColor = lvl >= 16 ? '#f59e0b' : lvl >= 11 ? '#8b5cf6' : lvl >= 6 ? '#3b82f6' : '#10b981';
+          return (
+            <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', bgcolor: isDark ? `${lvlColor}0a` : `${lvlColor}06`, border: `1px solid ${lvlColor}22` }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Zap size={15} color={lvlColor} fill={lvlColor} />
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: '0.65rem', fontWeight: 900, color: lvlColor, letterSpacing: 1.5 }}>XP PROGRESSION — LEVEL {lvl}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 900, color: 'white' }}>{xp.toLocaleString()}</Typography>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)' }}>/ {lvlCeil.toLocaleString()} XP</Typography>
+                  {lvl < 20 && <Typography sx={{ fontFamily: 'monospace', fontSize: '0.62rem', color: 'rgba(255,255,255,0.4)' }}>→ Lvl {lvl + 1}</Typography>}
+                </Box>
+              </Box>
+              <Box sx={{ height: 10, borderRadius: '5px', bgcolor: 'rgba(255,255,255,0.07)', overflow: 'hidden', position: 'relative' }}>
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 1.6, ease: 'easeOut', delay: 0.4 }}
+                  style={{ height: '100%', borderRadius: 5, background: `linear-gradient(90deg, ${lvlColor}bb, ${lvlColor})`, boxShadow: `0 0 12px ${lvlColor}66` }}
+                />
+              </Box>
+              {(profile.quizzesPassed > 0 || profile.totalStudyHours > 0) && (
+                <Typography sx={{ mt: 0.75, fontFamily: 'monospace', fontSize: '0.6rem', color: 'rgba(255,255,255,0.35)' }}>
+                  {profile.quizzesPassed || 0} quizzes passed · {parseFloat(profile.totalStudyHours || 0).toFixed(1)}h total study
+                </Typography>
+              )}
+            </Box>
+          );
+        })()}
+
         {/* ══ TWO-COL BODY ══ */}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 340px' }, gap: 3 }}>
 
           {/* LEFT COL */}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+
+            {/* ── 🎯 Skill Mastery Radar Chart ── */}
+            {(() => {
+              const mastery = profile.skillMastery && typeof profile.skillMastery === 'object'
+                ? Object.entries(profile.skillMastery)
+                : [];
+              if (mastery.length < 2) return null;
+              const radarData = mastery.slice(0, 8).map(([subject, value]) => ({
+                subject: subject.length > 10 ? subject.slice(0,10)+'…' : subject,
+                score: value,
+                fullMark: 100,
+              }));
+              return (
+                <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+                  <Box sx={{ borderRadius: '18px', p: 3, bgcolor: isDark ? '#0d1117' : '#fff', border: '1px solid', borderColor: 'rgba(99,102,241,0.2)', boxShadow: isDark ? '0 1px 24px rgba(99,102,241,0.07)' : '0 1px 8px rgba(99,102,241,0.06)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                      <Box>
+                        <Typography sx={{ fontFamily: 'monospace', fontSize: '0.6rem', fontWeight: 800, color: '#6366f1', letterSpacing: 2, mb: 0.5 }}>▸ SKILL / MASTERY MAP</Typography>
+                        <Typography sx={{ fontWeight: 800, fontSize: '1rem', color: isDark ? 'white' : '#0f172a' }}>Skill Mastery Radar</Typography>
+                      </Box>
+                      <Chip size="small" label="Live Data" sx={{ bgcolor: 'rgba(99,102,241,0.1)', color: '#818cf8', fontFamily: 'monospace', fontWeight: 800, fontSize: '0.62rem', border: '1px solid rgba(99,102,241,0.25)' }} />
+                    </Box>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                        <PolarGrid stroke="rgba(255,255,255,0.08)" />
+                        <PolarAngleAxis dataKey="subject" tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: 700, fontFamily: 'monospace' }} />
+                        <Radar name="Mastery" dataKey="score" stroke="#6366f1" fill="rgba(99,102,241,0.35)" fillOpacity={1} strokeWidth={2} dot={{ fill: '#6366f1', r: 4 }} />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                      {mastery.slice(0,8).map(([s, v]) => (
+                        <Box key={s} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1.25, py: 0.4, borderRadius: '8px', bgcolor: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.18)' }}>
+                          <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: '#818cf8' }}>{s}</Typography>
+                          <Box sx={{ px: 0.6, py: 0.1, borderRadius: '5px', bgcolor: `${v >= 80 ? '#10b981' : v >= 50 ? '#f59e0b' : '#6366f1'}22` }}>
+                            <Typography sx={{ fontFamily: 'monospace', fontSize: '0.62rem', fontWeight: 900, color: v >= 80 ? '#10b981' : v >= 50 ? '#f59e0b' : '#6366f1' }}>{v}%</Typography>
+                          </Box>
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+                </motion.div>
+              );
+            })()}
 
             {/* Bio */}
             {profile.bio && (
@@ -824,6 +930,73 @@ export default function UserProfile() {
                       );
                     })}
                   </Grid>
+                </Box>
+              </motion.div>
+            )}
+
+            {/* ── 📋 Study Activity Feed — Proof of Work ── */}
+            {activityLog.length > 0 && (
+              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }}>
+                <Box sx={{ borderRadius: '18px', p: 3, bgcolor: isDark ? '#0d1117' : '#fff', border: '1px solid', borderColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)', boxShadow: isDark ? '0 1px 8px rgba(0,0,0,0.3)' : '0 1px 4px rgba(0,0,0,0.05)' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
+                    <Box>
+                      <Typography sx={{ fontFamily: 'monospace', fontSize: '0.6rem', fontWeight: 800, color: '#10b981', letterSpacing: 2, mb: 0.5 }}>▸ PROOF OF WORK</Typography>
+                      <Typography sx={{ fontWeight: 800, fontSize: '1rem', color: isDark ? 'white' : '#0f172a' }}>Recent Study Activity</Typography>
+                    </Box>
+                    <Chip size="small" label={`${activityLog.length} entries`} sx={{ bgcolor: 'rgba(16,185,129,0.1)', color: '#10b981', fontFamily: 'monospace', fontWeight: 800, fontSize: '0.62rem', border: '1px solid rgba(16,185,129,0.25)' }} />
+                  </Box>
+                  <Box sx={{ position: 'relative' }}>
+                    {/* Vertical line */}
+                    <Box sx={{ position: 'absolute', left: 17, top: 8, bottom: 8, width: 2, bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 1 }} />
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      {activityLog.slice(0, 10).map((entry, i) => {
+                        const typeMap = {
+                          QUIZ_COMPLETED:  { emoji: '🧪', color: '#6366f1', label: 'Quiz' },
+                          HUB_ATTENDED:    { emoji: '🎙️', color: '#22d3ee', label: 'Session' },
+                          FLASHCARD_SET:   { emoji: '🃏', color: '#f59e0b', label: 'Flashcards' },
+                          FOCUS_SESSION:   { emoji: '🎯', color: '#10b981', label: 'Focus' },
+                        };
+                        const t = typeMap[entry.actionType] || { emoji: '📖', color: '#818cf8', label: 'Study' };
+                        const scorePct = entry.score !== null && entry.score !== undefined
+                          ? Math.round((entry.score / (entry.maxScore || 100)) * 100)
+                          : null;
+                        const xpColor = entry.multiplier >= 1.5 ? '#f59e0b' : entry.multiplier >= 1.2 ? '#10b981' : '#6366f1';
+                        return (
+                          <motion.div key={entry._id || i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 * i }}>
+                            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, pl: 0.5, py: 1.25, pr: 1.5, borderRadius: '12px', '&:hover': { bgcolor: 'rgba(255,255,255,0.025)' } }}>
+                              {/* Timeline dot */}
+                              <Box sx={{ width: 36, height: 36, borderRadius: '10px', bgcolor: `${t.color}18`, border: `1px solid ${t.color}35`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, zIndex: 1, fontSize: '1.1rem' }}>
+                                {t.emoji}
+                              </Box>
+                              <Box sx={{ flex: 1, minWidth: 0 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                  <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: isDark ? 'white' : '#0f172a', lineHeight: 1.3 }}>{entry.title}</Typography>
+                                  {scorePct !== null && (
+                                    <Box sx={{ px: 0.75, py: 0.1, borderRadius: '5px', bgcolor: `${scorePct >= 80 ? '#10b981' : scorePct >= 60 ? '#f59e0b' : '#ef4444'}18`, border: `1px solid ${scorePct >= 80 ? '#10b981' : scorePct >= 60 ? '#f59e0b' : '#ef4444'}30` }}>
+                                      <Typography sx={{ fontFamily: 'monospace', fontSize: '0.62rem', fontWeight: 900, color: scorePct >= 80 ? '#10b981' : scorePct >= 60 ? '#f59e0b' : '#ef4444' }}>{scorePct}%</Typography>
+                                    </Box>
+                                  )}
+                                </Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.5 }}>
+                                  <Chip size="small" label={t.label} sx={{ height: 16, bgcolor: `${t.color}12`, color: t.color, fontFamily: 'monospace', fontWeight: 800, fontSize: '0.58rem' }} />
+                                  {entry.subject && <Typography sx={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>{entry.subject}</Typography>}
+                                  {entry.timeSpent > 0 && <Typography sx={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)' }}>⏱ {entry.timeSpent}m</Typography>}
+                                  <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <Zap size={10} color={xpColor} fill={xpColor} />
+                                    <Typography sx={{ fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 900, color: xpColor }}>+{entry.xpEarned} XP</Typography>
+                                    {entry.multiplier > 1 && <Typography sx={{ fontFamily: 'monospace', fontSize: '0.58rem', color: '#f59e0b', fontWeight: 800 }}>{entry.multiplier}×</Typography>}
+                                  </Box>
+                                </Box>
+                                <Typography sx={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.25)', mt: 0.5 }}>
+                                  {new Date(entry.createdAt).toLocaleString()}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </motion.div>
+                        );
+                      })}
+                    </Box>
+                  </Box>
                 </Box>
               </motion.div>
             )}
