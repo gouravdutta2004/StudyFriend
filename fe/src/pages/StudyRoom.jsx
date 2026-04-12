@@ -18,6 +18,7 @@ import SessionReport from '../components/studyroom/SessionReport';
 import FocusAuditor from '../components/studyroom/FocusAuditor';
 import ReportUserModal from '../components/studyroom/ReportUserModal';
 import ArcadeSidebar from '../components/studyroom/ArcadeSidebar';
+import DraggableWidget from '../components/studyroom/DraggableWidget';
 
 import {
   ArrowLeft, Users, Loader2, Maximize, MessageSquare,
@@ -56,14 +57,14 @@ const glass = {
   boxShadow: '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)',
 };
 
-// ─── Tab definitions ──────────────────────────────────────────────
-const TABS = [
-  { key: 'chat',   icon: MessageSquare, label: 'Chat',   color: T.primary },
-  { key: 'notes',  icon: FileText,      label: 'Files',  color: '#22C55E' },
-  { key: 'collab', icon: PenLine,       label: 'Notes',  color: '#F59E0B' },
-  { key: 'tasks',  icon: CheckSquare,   label: 'Tasks',  color: '#F59E0B' },
-  { key: 'tools',  icon: LayoutList,    label: 'Tools',  color: '#22C55E' },
-  { key: 'arcade', icon: Gamepad2,      label: 'Arcade', color: '#F59E0B' },
+const DOCK_ITEMS = [
+  { key: 'video',  icon: Users,        label: 'Cameras', color: '#6366F1' },
+  { key: 'chat',   icon: MessageSquare,label: 'Chat',    color: '#3B82F6' },
+  { key: 'tasks',  icon: CheckSquare,  label: 'Tasks',   color: '#22C55E' },
+  { key: 'collab', icon: PenLine,      label: 'Notes',   color: '#F59E0B' },
+  { key: 'notes',  icon: FileText,     label: 'Files',   color: '#EC4899' },
+  { key: 'tools',  icon: LayoutList,   label: 'Tools',   color: '#14B8A6' },
+  { key: 'arcade', icon: Gamepad2,     label: 'Arcade',  color: '#8B5CF6' },
 ];
 
 // ─── Participant Chip ─────────────────────────────────────────────
@@ -158,8 +159,8 @@ export default function StudyRoom() {
 
   const [session, setSession]           = useState(null);
   const [loading, setLoading]           = useState(true);
-  const [showPanel, setShowPanel]       = useState(true);
-  const [activeTab, setActiveTab]       = useState('chat');
+  const [activeWidgets, setActiveWidgets] = useState(['video', 'chat']);
+  const [widgetOrder, setWidgetOrder]     = useState(['video', 'chat']);
   const [socket, setSocket]             = useState(null);
   const [showReport, setShowReport]     = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -221,6 +222,28 @@ export default function StudyRoom() {
     };
   }, [id, session, user]);
 
+  // ── Layout helpers ──
+  const toggleWidget = (w) => {
+    if (activeWidgets.includes(w)) {
+      setActiveWidgets(prev => prev.filter(x => x !== w));
+    } else {
+      setActiveWidgets(prev => [...prev, w]);
+      bringToFront(w);
+    }
+  };
+
+  const bringToFront = (w) => {
+    setWidgetOrder(prev => {
+      const filtered = prev.filter(x => x !== w);
+      return [...filtered, w];
+    });
+  };
+
+  const getZIndex = (w) => {
+    const idx = widgetOrder.indexOf(w);
+    return 60 + (idx >= 0 ? idx : 0); // Widgets sit above whiteboard (10)
+  };
+
   const toggleFullscreen = () => {
     if (!document.fullscreenElement && mainWrapperRef.current) {
       mainWrapperRef.current.requestFullscreen().catch(err => toast.error(`Fullscreen error: ${err.message}`));
@@ -266,8 +289,8 @@ export default function StudyRoom() {
         backgroundSize: '40px 40px',
       }} />
 
-      {/* Voice reactions overlay */}
-      {socket && <VoiceReactions socket={socket} roomId={id} />}
+      {/* Voice reactions overlay moved to chat */}
+
       {/* AI Focus Auditor */}
       {socket && user && <FocusAuditor session={session} socket={socket} userId={user._id} />}
 
@@ -293,7 +316,7 @@ export default function StudyRoom() {
 
         {/* ── Top HUD bar ── */}
         <div style={{
-          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50,
+          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
           padding: '12px 16px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           background: 'linear-gradient(180deg, rgba(15,23,42,0.95) 0%, transparent 100%)',
@@ -388,26 +411,8 @@ export default function StudyRoom() {
               </span>
             </div>
 
-            {/* Panel Toggle */}
-            <motion.button
-              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-              onClick={() => setShowPanel(v => !v)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '6px 12px', borderRadius: 10,
-                background: showPanel ? T.primaryL : 'rgba(255,255,255,0.05)',
-                border: `1px solid ${showPanel ? T.primaryB : T.borderSub}`,
-                color: showPanel ? T.primary : T.textMuted,
-                cursor: 'pointer', fontSize: 11, fontWeight: 700,
-                transition: 'all 0.3s ease',
-              }}
-            >
-              <Sparkles size={12} />
-              {showPanel ? 'Hide Panel' : 'Show Panel'}
-            </motion.button>
+            {/* Tools toggle handled by bottom dock now, removing inline panel toggle */}
 
-            {/* Separator */}
-            <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
 
             {/* Actions */}
             <motion.button
@@ -455,158 +460,192 @@ export default function StudyRoom() {
           </div>
         </div>
 
-        {/* ── Whiteboard canvas ── */}
+        {/* ── Whiteboard canvas (background) ── */}
         <div ref={whiteboardRef} style={{ position: 'absolute', inset: 0, zIndex: 10 }}>
           {socket && <SharedWhiteboard roomId={id} socket={socket} />}
         </div>
+        
+        {/* ── Widgets Layer ── */}
+        {socket && (
+          <>
+            {/* Video Widget */}
+            {activeWidgets.includes('video') && (
+              <DraggableWidget
+                id="widget-video" roomId={id} title="Cameras" icon={Users} color="#6366F1"
+                defaultPosition={{ x: 20, y: 70 }} defaultSize={{ width: 480, height: 350 }}
+                onClose={() => toggleWidget('video')} zIndex={getZIndex('video')} onClick={() => bringToFront('video')}
+              >
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <VideoRoom roomId={id} socket={socket} onTogglePanel={() => toggleWidget('chat')} showPanel={activeWidgets.includes('chat')} />
+                </div>
+              </DraggableWidget>
+            )}
 
-        {/* ── Video dock ── */}
-        <div style={{ position: 'absolute', inset: 0, zIndex: 50, pointerEvents: 'none' }}>
-          {socket && (
-            <VideoRoom
-              roomId={id}
-              socket={socket}
-              onTogglePanel={() => setShowPanel(v => !v)}
-              showPanel={showPanel}
-            />
-          )}
-        </div>
-      </div>
+            {/* Chat Widget */}
+            {activeWidgets.includes('chat') && (
+              <DraggableWidget
+                id="widget-chat" roomId={id} title="Room Chat" icon={MessageSquare} color="#3B82F6"
+                defaultPosition={{ x: window.innerWidth - 380, y: 70 }} defaultSize={{ width: 340, height: 500 }}
+                onClose={() => toggleWidget('chat')} zIndex={getZIndex('chat')} onClick={() => bringToFront('chat')}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                  <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 6, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <PomodoroCard {...sharedProps} />
+                    <RaiseHandCard {...sharedProps} />
+                  </div>
+                  <div style={{ flex: 1, minHeight: 0 }}>
+                    <StudyRoomChat socket={socket} roomId={id} />
+                  </div>
+                </div>
+              </DraggableWidget>
+            )}
 
-      {/* ── Side Panel ── */}
-      <AnimatePresence>
-        {showPanel && (
+            {/* Tasks Widget */}
+            {activeWidgets.includes('tasks') && (
+              <DraggableWidget
+                id="widget-tasks" roomId={id} title="Group Tasks" icon={CheckSquare} color="#22C55E"
+                defaultPosition={{ x: 100, y: 150 }} defaultSize={{ width: 400, height: 450 }}
+                onClose={() => toggleWidget('tasks')} zIndex={getZIndex('tasks')} onClick={() => bringToFront('tasks')}
+              >
+                <TaskBoard socket={socket} roomId={id} isDark={true} />
+              </DraggableWidget>
+            )}
+
+            {/* Notes/Collab Widget */}
+            {activeWidgets.includes('collab') && (
+              <DraggableWidget
+                id="widget-collab" roomId={id} title="Collab Notes" icon={PenLine} color="#F59E0B"
+                defaultPosition={{ x: 150, y: 180 }} defaultSize={{ width: 500, height: 550 }}
+                onClose={() => toggleWidget('collab')} zIndex={getZIndex('collab')} onClick={() => bringToFront('collab')}
+              >
+                <CollabNotes roomId={id} sessionId={id} socket={socket} />
+              </DraggableWidget>
+            )}
+
+            {/* Files Widget */}
+            {activeWidgets.includes('notes') && (
+              <DraggableWidget
+                id="widget-files" roomId={id} title="Files & Resources" icon={FileText} color="#EC4899"
+                defaultPosition={{ x: 200, y: 120 }} defaultSize={{ width: 360, height: 400 }}
+                onClose={() => toggleWidget('notes')} zIndex={getZIndex('notes')} onClick={() => bringToFront('notes')}
+              >
+                <div style={{ overflowY: 'auto', height: '100%', padding: 12 }}>
+                  <NotesUploader session={session} setSession={setSession} />
+                </div>
+              </DraggableWidget>
+            )}
+
+            {/* Tools Widget */}
+            {activeWidgets.includes('tools') && (
+              <DraggableWidget
+                id="widget-tools" roomId={id} title="Tools & Polls" icon={LayoutList} color="#14B8A6"
+                defaultPosition={{ x: 250, y: 160 }} defaultSize={{ width: 380, height: 480 }}
+                onClose={() => toggleWidget('tools')} zIndex={getZIndex('tools')} onClick={() => bringToFront('tools')}
+              >
+                <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+                  <LivePoll {...sharedProps} />
+                  <AmbientMusic isDark={true} />
+                  <RoomLeaderboard socket={socket} roomId={id} isDark={true} />
+                </div>
+              </DraggableWidget>
+            )}
+
+            {/* Arcade Widget */}
+            {activeWidgets.includes('arcade') && (
+              <DraggableWidget
+                id="widget-arcade" roomId={id} title="Arcade" icon={Gamepad2} color="#8B5CF6"
+                defaultPosition={{ x: window.innerWidth / 2 - 200, y: 100 }} defaultSize={{ width: 400, height: 500 }}
+                onClose={() => toggleWidget('arcade')} zIndex={getZIndex('arcade')} onClick={() => bringToFront('arcade')}
+              >
+                <ArcadeSidebar isDark={true} />
+              </DraggableWidget>
+            )}
+          </>
+        )}
+        
+        {/* ── Bottom Floating Dock ── */}
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 9999,
+          display: 'flex', justifyContent: 'center', alignItems: 'flex-end', paddingBottom: 16, pointerEvents: 'none'
+        }}>
           <motion.div
-            initial={{ x: 380, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 380, opacity: 0 }}
-            transition={{ type: 'spring', damping: 28, stiffness: 240 }}
+            drag
+            dragMomentum={false}
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            whileDrag={{ scale: 1.02, cursor: 'grabbing' }}
             style={{
-              position: 'relative', width: 360, flexShrink: 0,
-              height: '100%', display: 'flex', flexDirection: 'column',
-              zIndex: 60, overflow: 'hidden',
-              background: 'rgba(15,23,42,0.92)',
-              backdropFilter: 'blur(24px)',
-              borderLeft: `1px solid ${T.border}`,
-              boxShadow: '-8px 0 32px rgba(0,0,0,0.4)',
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'rgba(10,15,28,0.85)',
+              backdropFilter: 'blur(30px)',
+              WebkitBackdropFilter: 'blur(30px)',
+              padding: '8px',
+              borderRadius: 24,
+              border: `1px solid ${T.borderSub}`,
+              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+              pointerEvents: 'auto',
+              cursor: 'grab',
             }}
           >
-            {/* Panel header */}
+            {/* Drag Handle block */}
             <div style={{
-              padding: '16px 16px 0',
-              background: 'linear-gradient(180deg, rgba(99,102,241,0.08) 0%, transparent 100%)',
-              borderBottom: `1px solid ${T.borderSub}`,
-              paddingBottom: 0,
+              display: 'flex', gap: 2, padding: '0 4px', opacity: 0.5, cursor: 'grab'
             }}>
-              {/* Tab bar */}
-              <div style={{
-                display: 'flex', gap: 2, padding: '0 0 0 0',
-                overflowX: 'auto',
-              }}>
-                {TABS.map(tab => {
-                  const Icon = tab.icon;
-                  const active = activeTab === tab.key;
-                  return (
-                    <motion.button
-                      key={tab.key}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => setActiveTab(tab.key)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 5,
-                        padding: '8px 11px 10px',
-                        borderRadius: '10px 10px 0 0',
-                        cursor: 'pointer', fontSize: 11, fontWeight: 700,
-                        whiteSpace: 'nowrap', flexShrink: 0,
-                        background: active ? T.bgCard : 'transparent',
-                        color: active ? tab.color : T.textDim,
-                        border: active ? `1px solid ${T.border}` : '1px solid transparent',
-                        borderBottom: active ? `1px solid ${T.bgCard}` : '1px solid transparent',
-                        transition: 'all 0.2s ease',
-                        position: 'relative', bottom: -1,
-                      }}
-                    >
-                      <Icon size={12} />
-                      {tab.label}
-                      {active && (
-                        <motion.div
-                          layoutId="tab-indicator"
-                          style={{
-                            position: 'absolute', bottom: -1, left: 0, right: 0,
-                            height: 2, background: tab.color, borderRadius: '2px 2px 0 0',
-                          }}
-                        />
-                      )}
-                    </motion.button>
-                  );
-                })}
-              </div>
+              <div style={{ width: 4, height: 24, borderRadius: 2, background: 'rgba(255,255,255,0.2)' }} />
+              <div style={{ width: 4, height: 24, borderRadius: 2, background: 'rgba(255,255,255,0.2)' }} />
             </div>
-
-            {/* Tab content area */}
-            <div style={{
-              flex: 1, overflowY: 'auto', padding: '12px',
-              display: 'flex', flexDirection: 'column', gap: 10,
-              background: T.bgCard,
-              scrollbarWidth: 'thin',
-              scrollbarColor: `${T.primaryB} transparent`,
-            }}>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                  style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}
+            {DOCK_ITEMS.map((item) => {
+              const active = activeWidgets.includes(item.key);
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => toggleWidget(item.key)}
+                  onMouseEnter={(e) => {
+                    const tooltip = e.currentTarget.querySelector('.dock-tooltip');
+                    if (tooltip) tooltip.style.opacity = '1';
+                  }}
+                  onMouseLeave={(e) => {
+                    const tooltip = e.currentTarget.querySelector('.dock-tooltip');
+                    if (tooltip) tooltip.style.opacity = '0';
+                  }}
+                  style={{
+                    position: 'relative',
+                    width: 44, height: 44, borderRadius: 16,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: active ? `${item.color}25` : 'transparent',
+                    border: active ? `1px solid ${item.color}50` : '1px solid transparent',
+                    color: active ? item.color : T.textMuted,
+                    cursor: 'pointer', transition: 'all 0.2s',
+                  }}
                 >
-
-                  {/* ── Chat tab ── */}
-                  {activeTab === 'chat' && (
-                    <>
-                      <PomodoroCard {...sharedProps} />
-                      <RaiseHandCard {...sharedProps} />
-                      <div style={{ flex: 1, minHeight: 280 }}>
-                        {socket && <StudyRoomChat socket={socket} roomId={id} />}
-                      </div>
-                    </>
+                  <Icon size={20} />
+                  {/* Tooltip */}
+                  <div
+                    className="dock-tooltip"
+                    style={{
+                      position: 'absolute', top: -36, left: '50%', transform: 'translateX(-50%)',
+                      background: 'rgba(0,0,0,0.8)', padding: '4px 10px', borderRadius: 6,
+                      fontSize: 11, fontWeight: 700, color: '#fff', opacity: 0,
+                      pointerEvents: 'none', transition: 'opacity 0.2s', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {item.label}
+                  </div>
+                  {/* Active dot */}
+                  {active && (
+                    <div style={{
+                      position: 'absolute', bottom: 4, width: 4, height: 4,
+                      borderRadius: '50%', background: item.color,
+                      boxShadow: `0 0 6px ${item.color}`
+                    }} />
                   )}
-
-                  {/* ── Files tab ── */}
-                  {activeTab === 'notes' && (
-                    <NotesUploader session={session} setSession={setSession} />
-                  )}
-
-                  {/* ── Collab Notes tab ── */}
-                  {activeTab === 'collab' && socket && (
-                    <CollabNotes roomId={id} sessionId={id} socket={socket} />
-                  )}
-
-                  {/* ── Tasks tab ── */}
-                  {activeTab === 'tasks' && (
-                    <TaskBoard socket={socket} roomId={id} isDark={true} />
-                  )}
-
-                  {/* ── Tools tab ── */}
-                  {activeTab === 'tools' && (
-                    <>
-                      <LivePoll {...sharedProps} />
-                      <AmbientMusic isDark={true} />
-                      <RoomLeaderboard socket={socket} roomId={id} isDark={true} />
-                    </>
-                  )}
-
-                  {/* ── Arcade tab ── */}
-                  {activeTab === 'arcade' && (
-                    <ArcadeSidebar isDark={true} />
-                  )}
-
-                </motion.div>
-              </AnimatePresence>
-            </div>
+                </button>
+              );
+            })}
           </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      </div>
 
       {/* Global style: pulse anim */}
       <style>{`

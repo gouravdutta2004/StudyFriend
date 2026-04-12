@@ -3,6 +3,7 @@ import { Send, Hash, Smile } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
+import VoiceReactions from './studyroom/VoiceReactions';
 
 const T = {
   bg:      '#0F172A',
@@ -64,6 +65,7 @@ export default function StudyRoomChat({ socket, roomId }) {
       flex: 1, display: 'flex', flexDirection: 'column',
       background: 'rgba(15,23,42,0.5)', borderRadius: 14,
       border: `1px solid ${T.bSub}`, overflow: 'hidden', minHeight: 280,
+      position: 'relative', // Ensure nested particles stay within bounds
     }}>
       {/* Header */}
       <div style={{
@@ -197,6 +199,11 @@ export default function StudyRoomChat({ socket, roomId }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Voice Reactions Bar (Emojis that fly up) */}
+      <div style={{ padding: '0 8px', background: 'rgba(15,23,42,0.5)', zIndex: 10 }}>
+        {socket && <VoiceReactions socket={socket} roomId={roomId} />}
+      </div>
 
       {/* Input */}
       <form

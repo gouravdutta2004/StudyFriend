@@ -5,6 +5,7 @@
  */
 const router = require('express').Router();
 const { protect } = require('../middleware/auth');
+const { auditMiddleware } = require('../utils/auditLog');
 const User         = require('../models/User');
 const Contract     = require('../models/Contract');
 const Session      = require('../models/Session');
@@ -13,7 +14,7 @@ const Notification = require('../models/Notification');
 const Report       = require('../models/Report');
 
 // ── GET /api/compliance/export ─────────────────────────────────────────────
-router.get('/export', protect, async (req, res) => {
+router.get('/export', protect, auditMiddleware('DATA_EXPORT', 'USER_DATA'), async (req, res) => {
   try {
     const uid = req.user._id;
 
@@ -59,7 +60,7 @@ router.get('/export', protect, async (req, res) => {
 });
 
 // ── DELETE /api/compliance/delete-account ─────────────────────────────────
-router.delete('/delete-account', protect, async (req, res) => {
+router.delete('/delete-account', protect, auditMiddleware('ACCOUNT_DELETE', 'USER_DATA'), async (req, res) => {
   try {
     const uid = req.user._id;
 

@@ -11,10 +11,11 @@ export default function SessionReport({ socket, roomId, session, isDark, onClose
   const [stats, setStats] = useState({ messages: 0, handRaises: 0, pollVotes: 0, pomoCycles: 0, xpEarned: 0, minutesFocused: 0 });
   const [elapsed, setElapsed] = useState(0);
 
+  // Seed elapsed immediately and refresh every 10s
   useEffect(() => {
-    const id = setInterval(() => {
-      setElapsed(joinTime.current != null ? Math.round((performance.now() - joinTime.current) / 60000) : 0);
-    }, 30000);
+    const tick = () => setElapsed(joinTime.current != null ? Math.max(1, Math.round((performance.now() - joinTime.current) / 60000)) : 0);
+    tick();
+    const id = setInterval(tick, 10000);
     return () => clearInterval(id);
   }, []);
 

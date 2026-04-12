@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true },
-  password: { type: String, required: true, minlength: 6 },
+  password: { type: String, required: true, minlength: 8 },
   avatar: { type: String, default: '' },
   bio: { type: String, default: '', maxlength: 300 },
   subjects: [{ type: String }],
@@ -28,10 +28,10 @@ const userSchema = new mongoose.Schema({
   connections: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   pendingRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   sentRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  skippedMatches: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  skippedMatches: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', select: false }],
   isActive: { type: Boolean, default: true },
-  resetPasswordToken: String,
-  resetPasswordExpire: Date,
+  resetPasswordToken: { type: String, select: false },
+  resetPasswordExpire: { type: Date, select: false },
   major: { type: String, default: '' },
   currentStreak: { type: Number, default: 0 },
   league: { type: String, enum: ['BRONZE', 'SILVER', 'GOLD', 'ELITE'], default: 'BRONZE' },
@@ -64,12 +64,12 @@ const userSchema = new mongoose.Schema({
     activeUntil: { type: Date }
   },
   role: { type: String, enum: ['USER', 'ORG_ADMIN', 'SUPER_ADMIN'], default: 'USER' },
-  organization: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: false },
+  organization: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: false, select: false },
   verificationStatus: { type: String, enum: ['APPROVED', 'PENDING', 'REJECTED'], default: 'APPROVED' },
   kycStatus: { type: String, enum: ['UNVERIFIED', 'PENDING', 'VERIFIED', 'REJECTED'], default: 'UNVERIFIED' },
   verificationDetails: {
-    verifiedInstitution: { type: String, default: '' },
-    verifiedUntil: { type: Date, default: null }
+    verifiedInstitution: { type: String, default: '', select: false },
+    verifiedUntil: { type: Date, default: null, select: false }
   },
   studyProfile: {
     focusSpan: { type: String, enum: ['POMODORO', 'DEEP_WORK', ''] },
@@ -79,14 +79,20 @@ const userSchema = new mongoose.Schema({
     reliabilityRating: { type: Number, default: 5.0 }
   },
   // ── Trust & Safety ────────────────────────────────────────────────────────
-  trustStrikes:  { type: Number, default: 0 },      // auto-incremented on each report
-  isShadowBanned: { type: Boolean, default: false }, // auto-set when strikes >= 3
+  trustStrikes:  { type: Number, default: 0, select: false },
+  isShadowBanned: { type: Boolean, default: false, select: false },
+  // ── Account Security ──────────────────────────────────────────────────────
+  loginAttempts: { type: Number, default: 0, select: false },
+  lockUntil: { type: Date, select: false },
   // ── Gamification — Trophy Room ────────────────────────────────────────────
   quizzesPassed: { type: Number, default: 0 },
-  skillMastery:  { type: Map, of: Number, default: {} }, // e.g. { "Physics": 85, "React": 40 }
+  skillMastery:  { type: Map, of: Number, default: {} },
 }, { timestamps: true });
 
-
+// Virtual for account lock status
+userSchema.virtual('isLocked').get(function() {
+  return !!(this.lockUntil && this.lockUntil > Date.now());
+});
 
 userSchema.pre('save', async function () {
   if (!this.isModified('password')) return;
@@ -97,9 +103,45 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
+// Account lockout logic
+userSchema.methods.incLoginAttempts = function() {
+  // Reset attempts if lock has expired
+  if (this.lockUntil && this.lockUntil < Date.now()) {
+    return this.updateOne({
+      $set: { loginAttempts: 1 },
+      $unset: { lockUntil: 1 }
+    });
+  }
+  
+  const updates = { $inc: { loginAttempts: 1 } };
+  const maxAttempts = 5;
+  const lockTime = 2 * 60 * 60 * 1000; // 2 hours
+  
+  // Lock account after max attempts
+  if (this.loginAttempts + 1 >= maxAttempts && !this.isLocked) {
+    updates.$set = { lockUntil: Date.now() + lockTime };
+  }
+  
+  return this.updateOne(updates);
+};
+
+userSchema.methods.resetLoginAttempts = function() {
+  return this.updateOne({
+    $set: { loginAttempts: 0 },
+    $unset: { lockUntil: 1 }
+  });
+};
+
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
+  delete obj.resetPasswordToken;
+  delete obj.resetPasswordExpire;
+  delete obj.trustStrikes;
+  delete obj.isShadowBanned;
+  delete obj.loginAttempts;
+  delete obj.lockUntil;
+  delete obj.verificationDetails;
   return obj;
 };
 

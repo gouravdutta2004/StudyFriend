@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { apiLimiter } = require('../middleware/rateLimiters');
 const { 
   getUsers, updateUser, deleteUser, createUser, 
   getSystemConnections, severSystemConnection, 
@@ -17,6 +18,9 @@ const {
 } = require('../controllers/adminController');
 const { protect, admin, isOrgAdmin } = require('../middleware/auth');
 const authorizeRole = require('../middleware/rbac');
+
+// Apply rate limiting to all admin routes
+router.use(apiLimiter);
 
 // ── ORG ADMIN HYBRID AUTH ROUTES ── //
 router.post('/auth/login', require('../controllers/adminAuthController').login);

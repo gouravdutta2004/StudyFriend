@@ -53,11 +53,11 @@ export default function VoiceReactions({ socket, roomId }) {
             exit={{ opacity: 0 }}
             transition={{ duration: 2.5, ease: 'easeOut' }}
             style={{
-              position: 'fixed',
-              bottom: 90,
+              position: 'absolute',
+              bottom: 60,
               left: `${p.x}%`,
               fontSize: '2rem',
-              zIndex: 9999,
+              zIndex: 50,
               pointerEvents: 'none',
               filter: `drop-shadow(0 0 8px ${p.color})`,
             }}
@@ -69,12 +69,11 @@ export default function VoiceReactions({ socket, roomId }) {
 
       {/* Reaction bar at bottom */}
       <Box sx={{
-        position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-        display: 'flex', gap: 1, zIndex: 9000,
-        bgcolor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)',
-        borderRadius: '100px', px: 2, py: 1,
-        border: '1px solid rgba(255,255,255,0.1)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        display: 'flex', gap: 1, zIndex: 40,
+        bgcolor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)',
+        borderRadius: '16px', px: 2, py: 1,
+        borderTop: '1px solid rgba(255,255,255,0.05)',
+        justifyContent: 'space-between', width: '100%', boxSizing: 'border-box'
       }}>
         {REACTIONS.map(r => (
           <Box

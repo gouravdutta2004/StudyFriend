@@ -5,7 +5,29 @@ const Settings = require('../models/Settings');
 const crypto = require('crypto');
 const sendEmail = require('../utils/sendEmail');
 const { OAuth2Client } = require('google-auth-library');
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// Lazily create the Google client so it always picks up the env var at request-time
+let _googleClient = null;
+const getGoogleClient = () => {
+  if (!_googleClient) {
+    if (!process.env.GOOGLE_CLIENT_ID) throw new Error('GOOGLE_CLIENT_ID is not configured');
+    _googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+  }
+  return _googleClient;
+};
+
+// Sanitize sensitive data from logs
+const sanitizeForLog = (data) => {
+  if (typeof data === 'object' && data !== null) {
+    const sanitized = { ...data };
+    const SENSITIVE_FIELDS = ['password', 'token', 'email', 'resetPasswordToken'];
+    SENSITIVE_FIELDS.forEach(field => {
+      if (sanitized[field]) sanitized[field] = '[REDACTED]';
+    });
+    return sanitized;
+  }
+  return data;
+};
 
 const generateToken = (id, role) => {
   if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET is not configured');
@@ -17,7 +39,9 @@ const sanitizeForClient = (userObj) => {
   const REMOVE = [
     'resetPasswordToken', 'resetPasswordExpire',
     'trustStrikes', 'isShadowBanned',
-    'verificationDetails', // internal institution verification meta
+    'verificationDetails',
+    'loginAttempts', 'lockUntil',
+    'skippedMatches', 'organization'
   ];
   const obj = { ...userObj };
   REMOVE.forEach(k => delete obj[k]);
@@ -88,7 +112,8 @@ const register = async (req, res) => {
     // Privacy: sanitize before returning to client
     res.status(201).json({ token: generateToken(user._id, role.toLowerCase()), user: sanitizeForClient(user.toJSON()) });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Registration error:', sanitizeForLog(err));
+    res.status(500).json({ message: 'An error occurred during registration' });
   }
 };
 
@@ -97,7 +122,8 @@ const getOrganizations = async (req, res) => {
     const orgs = await Organization.find({}).select('name domain');
     res.json(orgs);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Get organizations error:', sanitizeForLog(err));
+    res.status(500).json({ message: 'An error occurred' });
   }
 };
 
@@ -106,26 +132,51 @@ const login = async (req, res) => {
     const { email, password } = req.body;
     
     // Check Admin database first
-    let user = await Admin.findOne({ email });
+    let user = await Admin.findOne({ email }).select('+password +loginAttempts +lockUntil');
     let role = 'admin';
     
     if (!user) {
       // Fallback to User database
-      user = await User.findOne({ email });
+      user = await User.findOne({ email }).select('+password +loginAttempts +lockUntil');
       role = 'user';
     }
 
-    if (!user || !(await user.matchPassword(password)))
+    if (!user) {
       return res.status(401).json({ message: 'Invalid email or password' });
-    if (!user.isActive)
+    }
+
+    // Check if account is locked
+    if (user.isLocked) {
+      return res.status(423).json({ 
+        message: 'Account temporarily locked due to too many failed login attempts. Please try again later or reset your password.',
+        lockedUntil: user.lockUntil
+      });
+    }
+
+    // Verify password
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
+      await user.incLoginAttempts();
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    // Check if account is active
+    if (!user.isActive) {
       return res.status(403).json({ message: 'Account blocked by administrator' });
+    }
+
+    // Reset login attempts on successful login
+    if (user.loginAttempts > 0) {
+      await user.resetLoginAttempts();
+    }
       
     const userData = sanitizeForClient(user.toJSON());
     if (role === 'admin') userData.isAdmin = true;
     
     res.json({ token: generateToken(user._id, role), user: userData });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Login error:', sanitizeForLog(err));
+    res.status(500).json({ message: 'An error occurred during login' });
   }
 };
 
@@ -183,7 +234,8 @@ const forgotPassword = async (req, res) => {
       return res.status(500).json({ message: 'Email could not be sent' });
     }
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Password reset error:', sanitizeForLog(err));
+    res.status(500).json({ message: 'An error occurred' });
   }
 };
 
@@ -214,7 +266,8 @@ const resetPassword = async (req, res) => {
 
     res.status(200).json({ success: true, message: 'Password updated successfully' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Password reset token error:', sanitizeForLog(err));
+    res.status(500).json({ message: 'An error occurred' });
   }
 };
 
@@ -239,23 +292,36 @@ const changePassword = async (req, res) => {
     
     res.json({ message: 'Password updated successfully' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Password change error:', sanitizeForLog(err));
+    res.status(500).json({ message: 'An error occurred' });
   }
 };
 
 const googleAuth = async (req, res) => {
   try {
     const { credential } = req.body;
-    if (!credential) return res.status(400).json({ message: 'No signature provided' });
+    if (!credential) return res.status(400).json({ message: 'Google credential token is missing.' });
 
-    const ticket = await googleClient.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    
-    const payload = ticket.getPayload();
+    // Step 1: Verify the Google ID token
+    let payload;
+    try {
+      const googleClient = getGoogleClient();
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (tokenErr) {
+      console.error('Google token verification failed:', tokenErr.message);
+      return res.status(401).json({
+        message: 'Google sign-in failed — invalid or expired token. Please try again.',
+      });
+    }
+
     const { email, name, picture } = payload;
+    if (!email) return res.status(400).json({ message: 'Google account has no email address.' });
 
+    // Step 2: Look up user in DB
     let user = await Admin.findOne({ email });
     let role = 'admin';
 
@@ -264,6 +330,7 @@ const googleAuth = async (req, res) => {
       role = 'user';
     }
 
+    // Step 3: Auto-register if first time
     if (!user) {
       const { isGlobalUser, collegeData } = req.body;
 
@@ -273,7 +340,9 @@ const googleAuth = async (req, res) => {
 
       if (!isGlobalUser) {
         if (!collegeData || !collegeData.name || !collegeData.domain) {
-          return res.status(404).json({ message: 'Account not found. Please register to select an institution first.' });
+          return res.status(404).json({
+            message: 'No account found. Please complete registration to select your institution first.',
+          });
         }
 
         let org = await Organization.findOne({ domain: collegeData.domain });
@@ -281,19 +350,17 @@ const googleAuth = async (req, res) => {
           org = await Organization.create({
             name: collegeData.name,
             domain: collegeData.domain,
-            authorizedAdmins: [email.toLowerCase()]
+            authorizedAdmins: [email.toLowerCase()],
           });
         }
-        
+
         orgId = org._id;
         verificationStatus = 'PENDING';
-        
-        // Admin Claim check
+
         if (org.authorizedAdmins && org.authorizedAdmins.map(e => e.toLowerCase()).includes(email.toLowerCase())) {
           newRole = 'ORG_ADMIN';
           verificationStatus = 'APPROVED';
         }
-        // Strict Walled Garden: All other typical students remain PENDING until explicitly approved by the Org Admin.
       }
 
       const randomPassword = crypto.randomBytes(20).toString('hex');
@@ -304,32 +371,38 @@ const googleAuth = async (req, res) => {
         avatar: picture,
         organization: orgId,
         role: newRole,
-        verificationStatus
+        verificationStatus,
       });
       role = 'user';
-      
-      // Fire-and-forget: do NOT await — send email in background so response is instant
-      Settings.findOne().then(settings => {
-        const template = settings?.emailTemplateWelcome || "<h1>Welcome {name}!</h1><p>We are glad to have you.</p>";
-        const welcomeHtml = template.replace(/{name}/g, user.name);
-        sendEmail({
-          email: user.email,
-          subject: 'Welcome to StudyFriend!',
-          message: `Welcome ${user.name}!`,
-          html: welcomeHtml
-        }).catch(err => console.error('Welcome email dispatch suppressed:', err.message));
-      }).catch(err => console.error('Settings query failed', err));
+
+      // Fire-and-forget welcome email — never block the response
+      (async () => {
+        try {
+          const settings = await Settings.findOne();
+          const template = settings?.emailTemplateWelcome || '<h1>Welcome {name}!</h1><p>We are glad to have you.</p>';
+          await sendEmail({
+            email: user.email,
+            subject: 'Welcome to StudyFriend!',
+            message: `Welcome ${user.name}!`,
+            html: template.replace(/{name}/g, user.name),
+          });
+        } catch (mailErr) {
+          console.error('Welcome email suppressed:', mailErr.message);
+        }
+      })();
     }
 
-    if (!user.isActive) return res.status(403).json({ message: 'Account blocked by administrator' });
+    if (!user.isActive) {
+      return res.status(403).json({ message: 'Your account has been blocked by an administrator.' });
+    }
 
     const userData = sanitizeForClient(user.toJSON());
     if (role === 'admin') userData.isAdmin = true;
 
-    res.json({ token: generateToken(user._id, role), user: userData });
+    return res.json({ token: generateToken(user._id, role), user: userData });
   } catch (err) {
-    console.error('Google Auth Error:', err);
-    res.status(500).json({ message: 'Google Authentication failed. Please check your GOOGLE_CLIENT_ID.' });
+    console.error('Google Auth unexpected error:', err);
+    return res.status(500).json({ message: 'An unexpected server error occurred. Please try again.' });
   }
 };
 

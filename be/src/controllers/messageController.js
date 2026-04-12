@@ -6,12 +6,18 @@ const { sendPushToUser } = require('../utils/pushNotification');
 const { checkAndCompleteQuest } = require('../utils/questEngine');
 const { callGemini } = require('./aiController');
 
+// Sanitize error messages
+const sanitizeError = (err) => {
+  console.error('Message controller error:', err.message);
+  return 'An error occurred';
+};
 
 const BAD_WORDS = ['spam', 'abuse', 'offensive', 'scam', 'fake', 'hate', 'slur'];
 
 const filterText = async (text, senderId, receiverId, source) => {
   let flagged = false;
   let cleanText = text;
+  
   BAD_WORDS.forEach(word => {
     const regex = new RegExp(`\\b${word}\\b`, 'gi');
     if (regex.test(cleanText)) {
@@ -23,7 +29,9 @@ const filterText = async (text, senderId, receiverId, source) => {
   if (flagged) {
     try {
       await FlaggedItem.create({ author: senderId, originalText: text, source: source, recipient: receiverId });
-    } catch(err) { console.error('FlaggedItem save error', err); }
+    } catch(err) { 
+      console.error('FlaggedItem save failed');
+    }
   }
   return cleanText;
 };
@@ -31,26 +39,44 @@ const filterText = async (text, senderId, receiverId, source) => {
 const sendMessage = async (req, res) => {
   try {
     const { receiverId, content } = req.body;
-    if (!content || !receiverId) return res.status(400).json({ message: 'Missing payload' });
+    
+    if (!content || !receiverId) {
+      return res.status(400).json({ message: 'Missing payload' });
+    }
+    
+    // Content length validation
+    if (content.length > 5000) {
+      return res.status(400).json({ message: 'Message too long (max 5000 characters)' });
+    }
     
     let receiver = await User.findById(receiverId);
     let isAdminTarget = false;
+    
     if (!receiver) {
        receiver = await Admin.findById(receiverId);
        if (receiver) isAdminTarget = true;
     }
-    if (!receiver) return res.status(404).json({ message: 'Target identity not found.' });
+    
+    if (!receiver) {
+      return res.status(404).json({ message: 'Recipient not found' });
+    }
 
     const cleanContent = await filterText(content, req.user._id, receiverId, 'Direct Message');
 
-    const message = await Message.create({ sender: req.user._id, receiver: receiverId, content: cleanContent });
+    const message = await Message.create({ 
+      sender: req.user._id, 
+      receiver: receiverId, 
+      content: cleanContent 
+    });
     
     const msgObj = message.toObject();
     let senderObj = await User.findById(req.user._id).select('name avatar').lean();
+    
     if (!senderObj) {
       senderObj = await Admin.findById(req.user._id).select('name avatar').lean();
       if (senderObj) senderObj.isAdmin = true;
     }
+    
     msgObj.sender = senderObj;
 
     // Emit live to receiver's socket room
@@ -59,7 +85,7 @@ const sendMessage = async (req, res) => {
       io.to(receiverId.toString()).emit('message_received', msgObj);
     }
 
-    // Send browser push to receiver (fire-and-forget, don't block response)
+    // Send browser push to receiver
     sendPushToUser(receiverId, {
       title: `💬 New message from ${senderObj?.name || 'Someone'}`,
       body: cleanContent.length > 80 ? cleanContent.substring(0, 80) + '...' : cleanContent,
@@ -86,10 +112,19 @@ Support Agent Response:`;
           const aiReplyText = await callGemini(prompt);
           
           // Save the AI message mimicking the admin
-          const aiMessage = await Message.create({ sender: receiverId, receiver: req.user._id, content: aiReplyText });
-          const aiMsgObj = aiMessage.toObject();
+          const aiMessage = await Message.create({ 
+            sender: receiverId, 
+            receiver: req.user._id, 
+            content: aiReplyText 
+          });
           
-          aiMsgObj.sender = { _id: receiverId, name: receiver.name, avatar: receiver.avatar, isAdmin: true };
+          const aiMsgObj = aiMessage.toObject();
+          aiMsgObj.sender = { 
+            _id: receiverId, 
+            name: receiver.name, 
+            avatar: receiver.avatar, 
+            isAdmin: true 
+          };
           
           if (io) {
             io.to(req.user._id.toString()).emit('message_received', aiMsgObj);
@@ -104,26 +139,29 @@ Support Agent Response:`;
           }).catch(() => {});
           
         } catch (aiErr) {
-          console.error('Support AI failed:', aiErr.message);
+          console.error('Support AI failed');
         }
       })();
     }
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
-
 
 const getConversation = async (req, res) => {
   try {
     const { userId } = req.params;
+    
     const messagesRaw = await Message.find({
       $or: [
         { sender: req.user._id, receiver: userId },
         { sender: userId, receiver: req.user._id }
       ]
-    }).lean().sort({ createdAt: 1 });
+    })
+    .lean()
+    .sort({ createdAt: 1 })
+    .limit(500); // Limit to prevent excessive data
 
     const messages = await Promise.all(messagesRaw.map(async msg => {
       let s = await User.findById(msg.sender).select('name avatar').lean();
@@ -135,10 +173,15 @@ const getConversation = async (req, res) => {
       return msg;
     }));
 
-    await Message.updateMany({ sender: userId, receiver: req.user._id, read: false }, { read: true });
+    // Mark messages as read
+    await Message.updateMany(
+      { sender: userId, receiver: req.user._id, read: false }, 
+      { read: true }
+    );
+    
     res.json(messages);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -146,7 +189,10 @@ const getInbox = async (req, res) => {
   try {
     const messagesRaw = await Message.find({
       $or: [{ sender: req.user._id }, { receiver: req.user._id }]
-    }).lean().sort({ createdAt: -1 });
+    })
+    .lean()
+    .sort({ createdAt: -1 })
+    .limit(100); // Limit inbox size
 
     // Collect unique user IDs from all messages
     const userIds = new Set();
@@ -180,9 +226,10 @@ const getInbox = async (req, res) => {
         conversations.push(msg);
       }
     }
+    
     res.json(conversations);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 

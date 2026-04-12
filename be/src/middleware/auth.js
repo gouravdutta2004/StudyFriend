@@ -2,6 +2,13 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Admin = require('../models/Admin');
 
+// Sanitize error messages to prevent information leakage
+const sanitizeError = (err) => {
+  // Never log full error objects that might contain sensitive data
+  if (err.message) return err.message;
+  return 'An error occurred';
+};
+
 // Routes always accessible regardless of shadow-ban or pending status
 const ALWAYS_ALLOW = [
   '/api/auth/me',
@@ -63,16 +70,14 @@ const protect = async (req, res, next) => {
       }
     }
 
-    // ── Add privacy headers to every authenticated response ──
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Headers now set globally by Helmet in server.js
 
     next();
   } catch (err) {
     const message = err.name === 'TokenExpiredError'
       ? 'Token expired, please log in again'
       : 'Not authorized, token failed';
+    console.error('Auth middleware error:', sanitizeError(err));
     return res.status(401).json({ message });
   }
 };

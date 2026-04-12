@@ -5,6 +5,12 @@ const Subject = require('../models/Subject');
 const sendEmail = require('../utils/sendEmail');
 const { sendPushToUser } = require('../utils/pushNotification');
 
+// Sanitize error messages
+const sanitizeError = (err) => {
+  console.error('User controller error:', err.message);
+  return 'An error occurred';
+};
+
 const PUBLIC_FIELDS = [
   'name', 'avatar', 'bio', 'subjects', 'educationLevel', 'university',
   'studyStyle', 'availability', 'preferOnline', 'socialLinks',
@@ -38,7 +44,7 @@ const getProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -57,7 +63,7 @@ const getMyProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -86,7 +92,7 @@ const updateProfile = async (req, res) => {
     const updatedUser = await user.save();
     res.json(updatedUser.toJSON());
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -109,7 +115,7 @@ const searchUsers = async (req, res) => {
     const users = await User.find(query).select(PUBLIC_FIELDS).limit(limit);
     res.json(users);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -131,26 +137,23 @@ const getMatches = async (req, res) => {
       _id: { $nin: excluded },
       isActive: true,
       isAdmin: { $ne: true },
-      isShadowBanned: { $ne: true }, // Trust & Safety: shadowbanned users never appear in discovery
-      'studyProfile.consistencyScore': { $gte: 40 } // Base rule: filter out terrible consistency
+      isShadowBanned: { $ne: true },
+      'studyProfile.consistencyScore': { $gte: 40 }
     };
 
     if (me.organization) query.organization = me.organization;
 
-    // Feature 4 Paywall: Exclude highly consistent users (80+) if on basic plan
     if (!isPro) {
       query['studyProfile.consistencyScore'] = { $gte: 40, $lte: 80 };
     }
 
-    const { mode } = req.query; // ?mode=opposite
+    const { mode } = req.query;
     const myProfile = me.studyProfile || {};
     
-    // Default zero values for missing traits
     const myFocus = myProfile.focusSpan || '';
     const myLearning = myProfile.learningType || '';
     const myEnergy = myProfile.energyPeak || '';
 
-    // Aggregation Variables Based on Mode
     const focusMatchScore = mode === 'opposite' 
       ? { $cond: [{ $ne: ['$studyProfile.focusSpan', myFocus] }, 15, 0] } 
       : { $cond: [{ $eq: ['$studyProfile.focusSpan', myFocus] }, 15, 0] };
@@ -159,7 +162,6 @@ const getMatches = async (req, res) => {
       ? { $cond: [{ $ne: ['$studyProfile.learningType', myLearning] }, 15, 0] }
       : { $cond: [{ $eq: ['$studyProfile.learningType', myLearning] }, 15, 0] };
     
-    // Energy Peak is always exactly matched for points as requested
     const energyMatchScore = { $cond: [{ $eq: ['$studyProfile.energyPeak', myEnergy] }, 20, 0] };
 
     const pipeline = [
@@ -173,12 +175,9 @@ const getMatches = async (req, res) => {
             ]
           }
       }},
-      // Keep only matches with at least some psychological compatibility score
       { $match: { psychScore: { $gt: 0 } } },
-      // Sort by the newly calculated score and consistency
       { $sort: { psychScore: -1, 'studyProfile.consistencyScore': -1 } },
-      { $limit: isPro ? 20 : 3 }, // Feature 4 Paywall Limits
-      // Privacy protection mask
+      { $limit: isPro ? 20 : 3 },
       { $project: {
           name: 1, avatar: 1, bio: 1, subjects: 1, educationLevel: 1, university: 1,
           studyStyle: 1, availability: 1, preferOnline: 1, socialLinks: 1,
@@ -190,7 +189,6 @@ const getMatches = async (req, res) => {
 
     const aggregatedMatches = await User.aggregate(pipeline);
 
-    // Apply old logic points (subject/major) dynamically to final output
     const finalScored = aggregatedMatches.map(c => {
       let score = c.psychScore;
       
@@ -210,7 +208,7 @@ const getMatches = async (req, res) => {
 
     res.json(finalScored);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -223,7 +221,7 @@ const skipMatch = async (req, res) => {
     await User.findByIdAndUpdate(req.user._id, { $addToSet: { skippedMatches: userId } });
     res.json({ message: 'User skipped successfully' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -251,7 +249,6 @@ const sendRequest = async (req, res) => {
       if (io) {
         io.to(userId).emit('notification', { message: `New connection request from ${req.user.name}` });
       }
-      // Browser push notification
       await sendPushToUser(userId, {
         title: '📨 New Connection Request',
         body: `${req.user.name} wants to connect with you on StudyFriend!`,
@@ -264,12 +261,12 @@ const sendRequest = async (req, res) => {
         message: `Hello ${target.name},\n\nYou have a new connection request from ${req.user.name}.\nLog into StudyFriend to accept or decline the request!\n\nBest,\nThe StudyFriend Team`
       });
     } catch (err) {
-      console.error('Email/Notification failed to send but request was dispatched:', err);
+      console.error('Email/Notification failed:', err.message);
     }
 
     res.json({ message: 'Connection request sent' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -299,7 +296,6 @@ const acceptRequest = async (req, res) => {
         if (io) {
           io.to(userId).emit('notification', { message: `${req.user.name} accepted your connection request!` });
         }
-        // Browser push notification
         await sendPushToUser(userId, {
           title: '🎉 Connection Accepted!',
           body: `${req.user.name} accepted your connection request. You can now message each other!`,
@@ -312,13 +308,13 @@ const acceptRequest = async (req, res) => {
           message: `Hello ${targetUser.name},\n\nGreat news! ${req.user.name} has accepted your connection request.\nYou can now message each other on StudyFriend!\n\nBest,\nThe StudyFriend Team`
         });
       } catch (err) {
-        console.error('Email/Notification failed to send but connection was formed:', err);
+        console.error('Email/Notification failed:', err.message);
       }
     }
 
     res.json({ message: 'Connection accepted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -329,7 +325,7 @@ const rejectRequest = async (req, res) => {
     await User.findByIdAndUpdate(userId, { $pull: { sentRequests: req.user._id } });
     res.json({ message: 'Request rejected' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -350,7 +346,7 @@ const getConnections = async (req, res) => {
       sentRequests: user.sentRequests
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -361,7 +357,7 @@ const disconnectUser = async (req, res) => {
     await User.findByIdAndUpdate(userId, { $pull: { connections: req.user._id } });
     res.json({ message: 'Disconnected successfully' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -371,14 +367,18 @@ const submitFeedback = async (req, res) => {
     if (!type || !content) return res.status(400).json({ message: 'Type and content required' });
     const feedback = await Feedback.create({ user: req.user._id, type, content });
     res.status(201).json({ message: 'Feedback submitted successfully', feedback });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { 
+    res.status(500).json({ message: sanitizeError(err) }); 
+  }
 };
 
 const getPublicSubjects = async (req, res) => {
   try {
     const subjects = await Subject.find({ isActive: true }).sort({ name: 1 });
     res.json(subjects);
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { 
+    res.status(500).json({ message: sanitizeError(err) }); 
+  }
 };
 
 const getSupportAdmin = async (req, res) => {
@@ -387,7 +387,7 @@ const getSupportAdmin = async (req, res) => {
     if (!admin) return res.status(404).json({ message: 'No active support administrators' });
     res.json({ _id: admin._id });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -397,10 +397,8 @@ const logStudy = async (req, res) => {
     if (!minutes) return res.status(400).json({ message: 'Minutes required' });
     const user = await User.findById(req.user._id);
     
-    // Update study hours
     user.studyHours = (user.studyHours || 0) + (minutes / 60);
     
-    // Update streak (simple logic)
     const now = new Date();
     const last = user.lastStudyDate ? new Date(user.lastStudyDate) : null;
     const todayStart = new Date(now).setHours(0, 0, 0, 0);
@@ -415,7 +413,6 @@ const logStudy = async (req, res) => {
     
     user.lastStudyDate = new Date();
     
-    // Evaluate badges
     const badges = new Set(user.badges || []);
     if (user.studyHours >= 10) badges.add('10h Scholar');
     if (user.studyHours >= 50) badges.add('50h Master');
@@ -425,7 +422,7 @@ const logStudy = async (req, res) => {
     await user.save();
     res.json({ message: 'Study time logged', user });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -433,11 +430,11 @@ const getLeaderboard = async (req, res) => {
   try {
     const users = await User.find({ isActive: true, isAdmin: { $ne: true } })
       .select('name avatar studyHours streak badges xp level')
-      .sort({ xp: -1, studyHours: -1 }) // Sort top XP
+      .sort({ xp: -1, studyHours: -1 })
       .limit(20);
     res.json(users);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -447,14 +444,11 @@ const getQuickPeek = async (req, res) => {
       .select('name avatar subjects lastStudyDate level xp isActive');
     if (!user) return res.status(404).json({ message: 'User not found' });
     
-    // Online if active within last 30 minutes
     const isOnline = user.lastStudyDate && (new Date() - new Date(user.lastStudyDate) < 30 * 60 * 1000);
     
-    // Calculate mutual subjects
     const currentUser = await User.findById(req.user._id).select('subjects');
     const mutualSubjects = (user.subjects || []).filter(s => (currentUser.subjects || []).includes(s));
     
-    // Calculate average rating
     const Rating = require('../models/Rating');
     const ratings = await Rating.find({ targetUser: user._id });
     const avgRating = ratings.length ? (ratings.reduce((acc, r) => acc + r.score, 0) / ratings.length).toFixed(1) : 'New';
@@ -464,7 +458,7 @@ const getQuickPeek = async (req, res) => {
       isOnline, mutualSubjects, avgRating, isActive: user.isActive
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
@@ -475,34 +469,27 @@ const syncGithub = async (req, res) => {
       return res.status(400).json({ message: 'GitHub username not linked prior to sync' });
     }
     const username = user.socialLinks.github.trim();
-    // Native node 18+ fetch
     const response = await fetch(`https://api.github.com/users/${username}/events/public`);
     if (!response.ok) return res.status(400).json({ message: 'Failed to access remote GitHub history' });
     
     const events = await response.json();
     const dates = events.map(e => new Date(e.created_at));
     
-    // Merge dates securely limits massive array overhead
     user.activityLog = [...(user.activityLog || []), ...dates].slice(-500); 
     await user.save();
     
     res.json({ message: 'GitHub coordinates synched deeply into heatmap!', activityLog: user.activityLog });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
-// GPS functions removed — platform is now privacy-first (Semantic Nebula replaces location)
-
-// ── Shared Study Hours (Trust Threshold) ──────────────────────────────────────
-// Returns total minutes two users have studied together in completed sessions
 const getSharedStudyHours = async (req, res) => {
   try {
     const Session = require('../models/Session');
     const targetId = req.params.id;
     const myId = req.user._id;
 
-    // Find all completed sessions where both users were participants or host
     const sessions = await Session.find({
       $and: [
         {
@@ -521,16 +508,14 @@ const getSharedStudyHours = async (req, res) => {
       status: { $in: ['completed', 'ended', 'active'] },
     }).select('duration').lean();
 
-    // Sum session durations (stored in minutes), convert to hours
     const totalMinutes = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
     const hours = parseFloat((totalMinutes / 60).toFixed(2));
 
     res.json({ hours, sessionsCount: sessions.length });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
-
 
 const getMyAnalytics = async (req, res) => {
   try {
@@ -541,21 +526,17 @@ const getMyAnalytics = async (req, res) => {
     const user = await User.findById(userId).select('connections streak badges xp level activityLog totalStudyHours studyHours subjects');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Last 30 days date range
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Last 8 weeks date range
     const eightWeeksAgo = new Date();
     eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
 
-    // Sessions completed (participated or hosted) per week for last 8 weeks
     const allMySessions = await Session.find({
       $or: [{ host: userId }, { participants: userId }],
       createdAt: { $gte: eightWeeksAgo }
     }).select('scheduledAt subject status');
 
-    // Group sessions by ISO week
     const weekMap = {};
     for (let i = 7; i >= 0; i--) {
       const d = new Date();
@@ -570,7 +551,6 @@ const getMyAnalytics = async (req, res) => {
     });
     const sessionsByWeek = Object.values(weekMap);
 
-    // Study hours per day for last 30 days from StudyMetric
     const metrics = await StudyMetric.find({
       userId,
       date: { $gte: thirtyDaysAgo }
@@ -580,7 +560,6 @@ const getMyAnalytics = async (req, res) => {
       hours: parseFloat((m.hours || 0).toFixed(2))
     }));
 
-    // Top subjects by session count
     const subjectMap = {};
     allMySessions.forEach(s => {
       if (s.subject) subjectMap[s.subject] = (subjectMap[s.subject] || 0) + 1;
@@ -604,9 +583,8 @@ const getMyAnalytics = async (req, res) => {
     });
   } catch (err) {
     console.error('Analytics Error:', err.message);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: sanitizeError(err) });
   }
 };
 
 module.exports = { getProfile, updateProfile, searchUsers, getMatches, skipMatch, sendRequest, acceptRequest, rejectRequest, getConnections, disconnectUser, submitFeedback, getPublicSubjects, getSupportAdmin, logStudy, getLeaderboard, getQuickPeek, syncGithub, getSharedStudyHours, getMyProfile, getMyAnalytics };
-

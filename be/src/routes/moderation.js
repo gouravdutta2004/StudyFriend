@@ -5,11 +5,13 @@
  */
 const router = require('express').Router();
 const { protect } = require('../middleware/auth');
+const { moderationLimiter } = require('../middleware/rateLimiters');
+const { reportValidation } = require('../middleware/validation');
 const User   = require('../models/User');
 const Report = require('../models/Report');
 
 // ── POST /api/moderation/report ────────────────────────────────────────────
-router.post('/report', protect, async (req, res) => {
+router.post('/report', protect, moderationLimiter, reportValidation, async (req, res) => {
   try {
     const { reportedUserId, reason, notes, sessionId } = req.body;
 

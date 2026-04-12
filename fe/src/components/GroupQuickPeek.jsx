@@ -6,23 +6,6 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useTheme as useCustomTheme } from '../context/ThemeContext';
 
-export default function GroupQuickPeek({ groupId, children, placement = "top" }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const { theme } = useCustomTheme();
-  const muiTheme = useTheme();
-  const navigate = useNavigate();
-  
-  const handleOpen = () => {
-    if (!data && !loading && groupId) {
-      setLoading(true);
-      api.get(`/groups/${groupId}/quick-peek`)
-         .then(res => { setData(res.data); })
-         .catch(err => { console.error(err); })
-         .finally(() => { setLoading(false); });
-    }
-  };
-
 const QuickPeekContent = ({ loading, data, theme, handleQuickJoin }) => {
   if (loading || !data) {
     return (
@@ -159,12 +142,6 @@ export default function GroupQuickPeek({ groupId, children, placement = "top" })
         </motion.div>
       }
     >
-      <Box component="span" sx={{ display: 'inline-flex', cursor: 'pointer', width: '100%' }}>
-        {children}
-      </Box>
-    </Tooltip>
-  );
-}
       <Box component="span" sx={{ display: 'inline-flex', cursor: 'pointer', width: '100%' }}>
         {children}
       </Box>

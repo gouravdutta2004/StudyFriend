@@ -1,39 +1,96 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
+const rateLimit = require('express-rate-limit');
 const connectDB = require('./src/config/db');
+
+// Validate critical environment variables on startup
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET is not configured');
+  process.exit(1);
+}
+if (!process.env.MONGO_URI) {
+  console.error('FATAL: MONGO_URI is not configured');
+  process.exit(1);
+}
 
 connectDB();
 
 const app = express();
-const allowedOrigins = [
+const isDev = process.env.NODE_ENV !== 'production';
+const allowedOrigins = isDev ? [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5174',
   'http://localhost:3000',
+] : [
   'https://studyfriend.pages.dev',
   /\.studyfriend\.pages\.dev$/,
   'https://studybuddy-fe.pages.dev',
   /\.studybuddy-fe\.pages\.dev$/,
-  'https://studyfriend.co.in',
-  'http://studyfriend.co.in'
+  'https://studyfriend.co.in'
 ];
 
 app.use(cors({ 
   origin: allowedOrigins, 
   credentials: true 
 }));
-app.use(express.json());
 
-// ── Global Privacy & Security Headers ──────────────────────────────────────
+// Security: Helmet for secure headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
+// Security: Request size limits to prevent DoS
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Security: NoSQL injection protection
 app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  // Remove fingerprinting header
+  if (req.body) mongoSanitize.sanitize(req.body);
+  if (req.params) mongoSanitize.sanitize(req.params);
+  if (req.headers) mongoSanitize.sanitize(req.headers);
+  if (req.query) mongoSanitize.sanitize(req.query);
+  next();
+});
+
+// Security: Global rate limiting
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // 100 requests per window
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(globalLimiter);
+
+// ── HTTPS Enforcement in Production ──────────────────────────────────────
+if (!isDev) {
+  app.use((req, res, next) => {
+    if (req.header('x-forwarded-proto') !== 'https') {
+      return res.redirect(`https://${req.header('host')}${req.url}`);
+    }
+    next();
+  });
+}
+
+// ── Additional Security Headers ──────────────────────────────────────────
+app.use((req, res, next) => {
   res.removeHeader('X-Powered-By');
   next();
 });
@@ -85,6 +142,8 @@ const roomWhiteboards = new Map(); // roomId -> string (serialized TLDraw state)
 
 const http = require('http');
 const { Server } = require('socket.io');
+const socketAuth = require('./src/middleware/socketAuth');
+const { encrypt, decrypt } = require('./src/utils/encryption');
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -93,10 +152,18 @@ const io = new Server(server, {
 
 app.set('io', io);
 
+// Socket.io authentication middleware
+io.use(socketAuth);
+
 io.on('connection', (socket) => {
-  console.log('🟢 Socket initialized: ', socket.id);
+  console.log('🟢 Socket initialized: ', socket.id, 'User:', socket.userId);
 
   socket.on('setup', (userId) => {
+    // Verify userId matches authenticated user
+    if (socket.userId !== userId) {
+      socket.emit('error', { message: 'Unauthorized: User ID mismatch' });
+      return;
+    }
     socket.join(userId);
   });
 
@@ -244,10 +311,16 @@ io.on('connection', (socket) => {
         const Session = require('./src/models/Session');
         const session = await Session.findById(rId).select('collabNotes');
         currentNotes = session?.collabNotes || '';
-        roomNotes.set(rId, currentNotes);
+        // Encrypt before storing in memory
+        if (currentNotes) {
+          roomNotes.set(rId, encrypt(currentNotes));
+        }
       } catch (e) {
         currentNotes = '';
       }
+    } else {
+      // Decrypt before sending to client
+      currentNotes = decrypt(currentNotes);
     }
     socket.emit('collab_notes_init', { roomId: rId, content: currentNotes });
   });
@@ -370,7 +443,8 @@ io.on('connection', (socket) => {
           try {
             const Session = require('./src/models/Session');
             const updates = {};
-            if (finalNotes) updates.collabNotes = finalNotes;
+            // Decrypt before saving to database
+            if (finalNotes) updates.collabNotes = decrypt(finalNotes);
             if (finalWhiteboard) updates.whiteboardState = finalWhiteboard;
             await Session.findByIdAndUpdate(rId, updates);
           } catch (e) { /* silent */ }
@@ -445,7 +519,8 @@ io.on('connection', (socket) => {
 
   // ── Collaborative Notes ──
   socket.on('collab_notes_update', ({ roomId, content }) => {
-    roomNotes.set(roomId, content);
+    // Encrypt before storing in memory
+    roomNotes.set(roomId, encrypt(content));
     socket.to(roomId).emit('collab_notes_update', { content });
   });
 
