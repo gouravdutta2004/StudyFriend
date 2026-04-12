@@ -1,4 +1,4 @@
-# StudyBuddyFinder 🚀
+# StudyFriend🚀
 
 StudyBuddyFinder is a modern, full-stack application designed to connect students, facilitate study sessions, and manage collaborative learning environments. The platform features an interactive WebRTC-powered video hub, real-time messaging, AI-augmented matching, and a seamless cross-platform mobile experience.
 
